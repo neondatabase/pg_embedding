@@ -1,5 +1,4 @@
 comment = 'hnsw index'
 default_version = '0.1.0'
-module_pathname = '$libdir/hnsw'
+module_pathname = '$libdir/embedding'
 relocatable = true
-trusted = true

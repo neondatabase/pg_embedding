@@ -1,5 +1,5 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
-\echo Use "CREATE EXTENSION hnsw" to load this file. \quit
+\echo Use "CREATE EXTENSION embedding" to load this file. \quit
 
 -- functions
 

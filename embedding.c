@@ -15,7 +15,7 @@
 #include <math.h>
 #include <float.h>
 
-#include "hnsw.h"
+#include "embedding.h"
 
 PG_MODULE_MAGIC;
 

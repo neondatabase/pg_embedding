@@ -12,7 +12,7 @@
 #include <stdexcept>
 
 extern "C" {
-#include "hnsw.h"
+#include "embedding.h"
 }
 
 struct HierarchicalNSW
