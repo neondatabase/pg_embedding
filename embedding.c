@@ -149,7 +149,7 @@ hnsw_check_available_memory(Size requested)
 	struct sysinfo si;
 	Size total;
 	if (sysinfo(&si) < 0)
-		elog(ERROR, "Failed to get amount of RAM: %n");
+		elog(ERROR, "Failed to get amount of RAM: %m");
 
 	total = si.totalram*si.mem_unit;
 	if ((Size)NBuffers*BLCKSZ + requested >= total)
@@ -580,6 +580,7 @@ l2_distance(PG_FUNCTION_ARGS)
 				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
 	}
 
+	#pragma clang loop vectorize(enable)
 	for (int i = 0; i < a_dim; i++)
 	{
 		diff = ax[i] - bx[i];
