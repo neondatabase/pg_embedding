@@ -30,6 +30,13 @@ dist_t fstdistfunc_scalar(const coord_t *x, const coord_t *y, size_t n)
 #ifdef __x86_64__
 #include <immintrin.h>
 
+
+#if defined(__GNUC__)
+#define PORTABLE_ALIGN32 __attribute__((aligned(32)))
+#else
+#define PORTABLE_ALIGN32 __declspec(align(32))
+#endif
+
 __attribute__((target("avx2")))
 dist_t fstdistfunc_avx2(const coord_t *x, const coord_t *y, size_t n)
 {
