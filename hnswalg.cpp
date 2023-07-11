@@ -119,7 +119,7 @@ fstdistfunc(HnswMetadata* meta, const coord_t *x, const coord_t *y)
 #ifndef __x86_64__
     return fstdistfunc_scalar(x, y, dim);
 #else
-    if(metas->use_avx2)
+    if(meta->use_avx2)
         return fstdistfunc_avx2(x, y, dim);
 
     return fstdistfunc_sse(x, y, dim);
