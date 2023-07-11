@@ -2,7 +2,7 @@ SET enable_seqscan = off;
 
 CREATE TABLE t (val real[]);
 INSERT INTO t (val) VALUES ('{0,0,0}'), ('{1,2,3}'), ('{1,1,1}'), (NULL);
-CREATE INDEX ON t USING hnsw (val) WITH (maxelements = 10, dims=3, m=3);
+CREATE INDEX ON t USING hnsw (val) WITH (dims=3, m=3);
 
 INSERT INTO t (val) VALUES (array[1,2,4]);
 

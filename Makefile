@@ -7,7 +7,7 @@ OBJS = embedding.o hnswalg.o
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
-REGRESS_OPTS = --inputdir=test --load-extension=hnsw
+REGRESS_OPTS = --inputdir=test --load-extension=embedding
 
 # For auto-vectorization:
 # - GCC (needs -ftree-vectorize OR -O3) - https://gcc.gnu.org/projects/tree-ssa/vectorization.html

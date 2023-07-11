@@ -15,29 +15,8 @@ extern "C" {
 #include "embedding.h"
 }
 
-struct HierarchicalNSW
+struct HierarchicalNSW : HnswMetadata
 {
-	size_t maxelements;
-	size_t cur_element_count;
-
-	idx_t  enterpoint_node;
-
-	size_t dim;
-	size_t data_size;
-	size_t offset_data;
-	size_t offset_label;
-	size_t size_data_per_element;
-	size_t M;
-	size_t maxM;
-	size_t size_links_level0;
-	size_t efConstruction;
-
-#ifdef __x86_64__
-	bool	use_avx2;
-#endif
-
-	char   data_level0_memory[0]; // varying size
-
   public:
 	HierarchicalNSW(size_t dim, size_t maxelements, size_t M, size_t maxM, size_t efConstruction);
 	~HierarchicalNSW();
