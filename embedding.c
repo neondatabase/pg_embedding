@@ -349,13 +349,13 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 
 	hnsw->unlogged = true;
 	#ifdef NEON_SMGR
-	smgr_start_unlogged_build(index->rd_smgr);
+	smgr_start_unlogged_build(RelationGetSmgr(index));
 	#endif
 
 	hnsw_populate(hnsw, index, heap);
 
 	#ifdef NEON_SMGR
-	smgr_finish_unlogged_build_phase_1(index->rd_smgr);
+	smgr_finish_unlogged_build_phase_1(RelationGetSmgr(index));
 	#endif
 
 	/*
@@ -375,7 +375,7 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 		#endif
 	}
 	#ifdef NEON_SMGR
-	smgr_end_unlogged_build(index->rd_smgr);
+	smgr_end_unlogged_build(RelationGetSmgr(index));
 	#endif
 
 	result->heap_tuples = result->index_tuples = hnsw->n_inserted;
