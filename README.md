@@ -4,7 +4,7 @@ The `pg_embedding` extension enables the use of the Hierarchical Navigable Small
 
 HNSW is a graph-based approach to indexing multi-dimensional data. It constructs a multi-layered graph, where each layer is a subset of the previous one. During a search, the algorithm navigates through the graph from the top layer to the lowest layer to quickly find the nearest neighbor. 
 
-Ths extension is based on [ivf-hnsw](https://github.com/dbaranchuk/ivf-hnsw) implementation of [HNSW](https://www.pinecone.io/learn/hnsw),
+This extension is based on [ivf-hnsw](https://github.com/dbaranchuk/ivf-hnsw) implementation of [HNSW](https://www.pinecone.io/learn/hnsw),
 the code for the current state-of-the-art billion-scale nearest neighbor search system<sup>[[1]](#references)</sup>.
 
 ## Usage summary
