@@ -16,7 +16,7 @@ The statements in this usage summary are described in further detail in the sect
 ```sql
 CREATE EXTENSION embedding;
 CREATE TABLE documents(id integer PRIMARY KEY, embedding real[]);
-SELECT id FROM documents ORDER BY emebedding <-> ARRAY[1.1, 2.2, 3.3] LIMIT 1;
+SELECT id FROM documents ORDER BY embedding <-> ARRAY[1.1, 2.2, 3.3] LIMIT 1;
 ```
 
 ### Enable the extension
@@ -59,7 +59,7 @@ where:
 - `SELECT id FROM documents` selects the `id` field from all records in the `documents` table.
 - `<->`: This is a "distance between" operator. It calculates the Euclidean distance (L2) between the query vector and each row of the dataset.
 - `ORDER BY` sorts the selected records in ascending order based on the calculated distances. In other words, records with values closer to the `[1.1, 2.2, 3.3]` query vector will be returned first.
-- `LIMIT 1` limits the result set to one records after sorting.
+- `LIMIT 1` limits the result set to one record after sorting.
 
 In summary, the query retrieves the ID of the record from the `documents` table whose value is closest to the `[1.1, 2.2, 3.3]` query vector according to Euclidean distance.
 
