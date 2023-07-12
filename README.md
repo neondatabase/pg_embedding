@@ -71,7 +71,7 @@ To optimize search behavior, you can add an HNSW index. To create the HNSW index
 CREATE INDEX ON documents USING hnsw(embedding) WITH (maxelements=1000, dims=3, m=8);
 ```
 
-**Note:** HNSW indexes are created in memory and built on demand. 
+**Note:** HNSW indexes are created in memory and built on demand.
 
 ### HNSW index options
 
@@ -89,7 +89,7 @@ The `m`, `efConstruction`, and `efSearch` options allow you to tune the HNSW alg
 - `efConstruction`: This option influences the trade-off between index quality and construction speed. A high `efConstruction` value creates a higher quality graph, enabling more accurate search results, but a higher value also means that index construction takes longer.
 - `efSearch`: This option influences the trade-off between query accuracy (recall) and speed. A higher `efSearch` value increases accuracy at the cost of speed. This value should be equal to or larger than `k`, which is the number of nearest neighbors you want your search to return.
 
-In summary, to prioritize for search speed over accuracy, use lower values for `m` and `efSearch`. Conversely, to prioritize accuracy over search speed, use higher value for `m` and `efSearch`. At the cost of index build time, you can also use a higher `efConstruction` value to enable more accurate search results.
+In summary, to prioritize search speed over accuracy, use lower values for `m` and `efSearch`. Conversely, to prioritize accuracy over search speed, use a higher value for `m` and `efSearch`. At the cost of index build time, you can also use a higher `efConstruction` value to enable more accurate search results.
 
 ## How HNSW search works
 
