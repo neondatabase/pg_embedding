@@ -9,6 +9,7 @@
 #include "commands/vacuum.h"
 #include "nodes/execnodes.h"
 #include "storage/bufmgr.h"
+#include "storage/smgr.h"
 #include "utils/guc.h"
 #include "utils/selfuncs.h"
 
@@ -31,6 +32,7 @@ PG_MODULE_MAGIC;
 typedef struct {
 	HnswMetadata	meta;
 	Relation    	rel;
+	bool            unlogged;  /* Do not need to wallog changes: either relation is unlogged, either index construction */
 	uint64_t     	n_inserted; /* Calculated since start of operation */
 	GenericXLogState* xlog_state; /* XLog state for wal logging updated pages */
 	size_t			n_buffers; /* Number of simultaneously accessed buffers */
@@ -117,6 +119,7 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	}
 
 	memcpy(&label, tid, sizeof(*tid));
+	
 	if (!hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label))
 		elog(ERROR, "HNSW index insert failed");
 }
@@ -158,6 +161,7 @@ hnsw_get_index(Relation indexRel)
 	hnsw->n_buffers = 0;
 	hnsw->xlog_state = NULL;
 	hnsw->n_inserted = 0;
+	hnsw->unlogged = RelationNeedsWAL(indexRel);
 	return hnsw;
 }
 
@@ -342,7 +346,38 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 {
 	HnswIndex* hnsw = hnsw_get_index(index);
 	IndexBuildResult* result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+
+	hnsw->unlogged = true;
+	#ifdef NEON_SMGR
+	smgr_start_unlogged_build(index->rd_smgr);
+	#endif
+
 	hnsw_populate(hnsw, index, heap);
+
+	#ifdef NEON_SMGR
+	smgr_finish_unlogged_build_phase_1(index->rd_smgr);
+	#endif
+
+	/*
+	 * We didn't write WAL records as we built the index, so if
+	 * WAL-logging is required, write all pages to the WAL now.
+	 */
+	if (RelationNeedsWAL(index))
+	{
+		log_newpage_range(index, MAIN_FORKNUM,
+						  0, RelationGetNumberOfBlocks(index),
+						  true);
+		#ifdef NEON_SMGR
+		SetLastWrittenLSNForBlockRange(XactLastRecEnd,
+									   index->rd_smgr->smgr_rnode.node,
+									   MAIN_FORKNUM, 0, RelationGetNumberOfBlocks(index));
+		SetLastWrittenLSNForRelation(XactLastRecEnd, index->rd_smgr->smgr_rnode.node, MAIN_FORKNUM);
+		#endif
+	}
+	#ifdef NEON_SMGR
+	smgr_end_unlogged_build(index->rd_smgr);
+	#endif
+
 	result->heap_tuples = result->index_tuples = hnsw->n_inserted;
 	pfree(hnsw);
 	return result;
@@ -418,12 +453,13 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 		buf = ReadBuffer(hnsw->rel, extend ? P_NEW : rel_size-1);
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
-		state = GenericXLogStart(hnsw->rel);
+		if (!hnsw->unlogged)
+			state = GenericXLogStart(hnsw->rel);
 
+		page = hnsw->unlogged ? BufferGetPage(buf) : GenericXLogRegisterBuffer(state, buf, extend ? GENERIC_XLOG_FULL_IMAGE : 0);
 		if (extend)
 		{
 			Assert(BufferGetBlockNumber(buf) == rel_size);
-			page = GenericXLogRegisterBuffer(state, buf, GENERIC_XLOG_FULL_IMAGE);
 			PageInit(page, BufferGetPageSize(buf), sizeof(HnswPageOpaque));
 			opq = (HnswPageOpaque*)PageGetSpecialPointer(page);
 			opq->dims = (uint16_t)hnsw->meta.dim;
@@ -432,7 +468,6 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 		}
 		else
 		{
-			page = GenericXLogRegisterBuffer(state, buf, 0);
 			hnsw_check_meta(&hnsw->meta, page);
 		}
 
@@ -441,7 +476,8 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 		{
 			if (extend)
 				elog(ERROR, "Failed to append item to the page");
-			GenericXLogAbort(state);
+			if (state)
+				GenericXLogAbort(state);
 			UnlockReleaseBuffer(buf);
 			extend = true;
 		}
@@ -449,7 +485,8 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 			break;
 	}
 	MarkBufferDirty(buf);
-	GenericXLogFinish(state);
+	if (state)
+		GenericXLogFinish(state);
 	UnlockReleaseBuffer(buf);
 
 	hnsw->n_inserted += 1;
@@ -520,9 +557,16 @@ void hnsw_begin_write(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** 
 		elog(ERROR, "HNSW stack overflow");
 
 	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-	hnsw->xlog_state = GenericXLogStart(hnsw->rel);
-	page = GenericXLogRegisterBuffer(hnsw->xlog_state, buf, 0);
-
+	if (hnsw->unlogged)
+	{
+		hnsw->xlog_state = NULL;
+		page = BufferGetPage(buf);
+	}
+	else
+	{
+		hnsw->xlog_state = GenericXLogStart(hnsw->rel);
+		page = GenericXLogRegisterBuffer(hnsw->xlog_state, buf, 0);
+	}
 	hnsw_check_meta(meta, page);
 
 	item_id = PageGetItemId(page, FirstOffsetNumber + idx % meta->elems_per_page);
@@ -552,9 +596,12 @@ void hnsw_end_write(HnswMetadata* meta)
 
 	hnsw->n_buffers -= 1;
 	MarkBufferDirty(hnsw->buffers[hnsw->n_buffers]);
-	GenericXLogFinish(hnsw->xlog_state);
+	if (hnsw->xlog_state)
+	{
+		GenericXLogFinish(hnsw->xlog_state);
+		hnsw->xlog_state = NULL;
+	}
 	UnlockReleaseBuffer(hnsw->buffers[hnsw->n_buffers]);
-	hnsw->xlog_state = NULL;
 }
 
 
