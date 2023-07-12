@@ -110,7 +110,7 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	if (isnull[0])
 		return;
 
-	array = DatumGetArrayTypeP(values[0]);
+	array = DatumGetArrayTypePCopy(values[0]);
 	n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
 	if (n_items != hnsw->meta.dim)
 	{
@@ -119,9 +119,10 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	}
 
 	memcpy(&label, tid, sizeof(*tid));
-	
+
 	if (!hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label))
 		elog(ERROR, "HNSW index insert failed");
+	pfree(array);
 }
 
 static void
@@ -229,7 +230,7 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 			return false;
 
 		value = scan->orderByData->sk_argument;
-		array = DatumGetArrayTypeP(value);
+		array = DatumGetArrayTypePCopy(value);
 		n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
 		if (n_items != so->hnsw->meta.dim)
 		{
@@ -239,6 +240,7 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 
 		if (!hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(array), &n_results, &results))
 			elog(ERROR, "HNSW index search failed");
+		pfree(array);
 		so->results = (ItemPointer)palloc(n_results*sizeof(ItemPointerData));
 		so->n_results = n_results;
 		for (size_t i = 0; i < n_results; i++)
@@ -416,6 +418,7 @@ hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 	}
 	memcpy(&label, heap_tid, sizeof(*heap_tid));
 	success = hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label);
+	pfree(array);
 	pfree(hnsw);
 	return success;
 }
