@@ -591,9 +591,6 @@ void hnsw_end_write(HnswMetadata* meta)
 	if (hnsw->n_buffers == 0)
 		elog(ERROR, "HNSW stack is empty");
 
-	if (hnsw->xlog_state == NULL)
-		elog(ERROR, "No buffer is updated");
-
 	hnsw->n_buffers -= 1;
 	MarkBufferDirty(hnsw->buffers[hnsw->n_buffers]);
 	if (hnsw->xlog_state)
