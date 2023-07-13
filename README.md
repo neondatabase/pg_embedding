@@ -71,7 +71,7 @@ To optimize search behavior, you can add an HNSW index. To create the HNSW index
 CREATE INDEX ON documents USING hnsw(embedding) WITH (maxelements=1000, dims=3, m=8);
 ```
 
-**Note:** HNSW indexes are created in memory and built on demand.
+**Note:** HNSW indexes are created in memory. If released from memory, the index is rebuilt the next time it is accessed.
 
 ### HNSW index options
 
