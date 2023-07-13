@@ -21,6 +21,7 @@
 PG_MODULE_MAGIC;
 
 #define HNSW_STACK_SIZE 4
+#define FIRST_PAGE      0
 
 /*
  * Postgres specific part of HNSW index.
@@ -35,6 +36,8 @@ typedef struct {
 	bool            unlogged;  /* Do not need to wallog changes: either relation is unlogged, either index construction */
 	uint64_t     	n_inserted; /* Calculated since start of operation */
 	GenericXLogState* xlog_state; /* XLog state for wal logging updated pages */
+	Buffer          writebuf; /* Currently written page */
+	Buffer          lockbuf; /* First page is used to provide MURSIW access to HNSW index */
 	size_t			n_buffers; /* Number of simultaneously accessed buffers */
 	Buffer			buffers[HNSW_STACK_SIZE];
 } HnswIndex;
@@ -163,6 +166,8 @@ hnsw_get_index(Relation indexRel)
 	hnsw->xlog_state = NULL;
 	hnsw->n_inserted = 0;
 	hnsw->unlogged = RelationNeedsWAL(indexRel);
+	hnsw->lockbuf = InvalidBuffer;
+	hnsw->writebuf = InvalidBuffer;
 	return hnsw;
 }
 
@@ -348,11 +353,26 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 {
 	HnswIndex* hnsw = hnsw_get_index(index);
 	IndexBuildResult* result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+	Buffer buf;
+	HnswPageOpaque* opq;
+	Page page;
 
 	hnsw->unlogged = true;
 	#ifdef NEON_SMGR
 	smgr_start_unlogged_build(RelationGetSmgr(index));
 	#endif
+
+	/* We need to initialize firtst page to avoid race condition on insert */
+	buf = ReadBuffer(hnsw->rel, P_NEW);
+	Assert(BufferGetBlockNumber(buf) == FIRST_PAGE);
+	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+	page = BufferGetPage(buf);
+	PageInit(page, BufferGetPageSize(buf), sizeof(HnswPageOpaque));
+	opq = (HnswPageOpaque*)PageGetSpecialPointer(page);
+	opq->dims = (uint16_t)hnsw->meta.dim;
+	opq->maxM = (uint16_t)hnsw->meta.maxM;
+	MarkBufferDirty(buf);
+	UnlockReleaseBuffer(buf);
 
 	hnsw_populate(hnsw, index, heap);
 
@@ -445,16 +465,30 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 	Buffer buf;
 	Page page;
 	HnswPageOpaque* opq;
+	bool result;
 	char item[BLCKSZ];
 
 	memset(item, 0, hnsw->meta.offset_data);
 	memcpy(item + hnsw->meta.offset_data, coord, hnsw->meta.offset_label - hnsw->meta.offset_data);
 	memcpy(item + hnsw->meta.offset_label, &label, sizeof(label_t));
 
+
+	Assert(hnsw->lockbuf == InvalidBuffer);
+	if (rel_size > 1)
+	{
+		/* First obtain exclusive lock oni first page: itis needed to sycnhronize access to the index.
+		 * We done not support concurrent inserted because HNSW insert algorithm can acess pages in arbitrary ortder and sop cause deadlock
+		 */
+		hnsw->lockbuf = ReadBuffer(hnsw->rel, FIRST_PAGE);
+		LockBuffer(hnsw->lockbuf, BUFFER_LOCK_EXCLUSIVE);
+	}
 	while (true)
 	{
 		buf = ReadBuffer(hnsw->rel, extend ? P_NEW : rel_size-1);
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+
+		if (hnsw->lockbuf == InvalidBuffer)
+			hnsw->lockbuf = buf;
 
 		if (!hnsw->unlogged)
 			state = GenericXLogStart(hnsw->rel);
@@ -471,7 +505,8 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 		}
 		else
 		{
-			hnsw_check_meta(&hnsw->meta, page);
+			if (hnsw->lockbuf == buf)
+				hnsw_check_meta(&hnsw->meta, page);
 		}
 
 		ins_offs = PageAddItem(page, (Item)item, hnsw->meta.size_data_per_element, InvalidOffsetNumber, false, false);
@@ -481,7 +516,8 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 				elog(ERROR, "Failed to append item to the page");
 			if (state)
 				GenericXLogAbort(state);
-			UnlockReleaseBuffer(buf);
+			if (buf != hnsw->lockbuf)
+				UnlockReleaseBuffer(buf);
 			extend = true;
 		}
 		else
@@ -490,13 +526,20 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 	MarkBufferDirty(buf);
 	if (state)
 		GenericXLogFinish(state);
-	UnlockReleaseBuffer(buf);
+
+	if (buf != hnsw->lockbuf)
+		UnlockReleaseBuffer(buf);
 
 	hnsw->n_inserted += 1;
 
 	cur_c = (rel_size-1)*hnsw->meta.elems_per_page + ins_offs - FirstOffsetNumber;
 
-	return hnsw_bind_point(&hnsw->meta, coord, cur_c);
+	result = hnsw_bind_point(&hnsw->meta, coord, cur_c);
+
+	UnlockReleaseBuffer(hnsw->lockbuf);
+	hnsw->lockbuf = InvalidBuffer;
+
+	return result;
 }
 
 
@@ -512,12 +555,24 @@ void hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** c
 	if (hnsw->n_buffers >= HNSW_STACK_SIZE)
 		elog(ERROR, "HNSW stack overflow");
 
-	buf = ReadBuffer(hnsw->rel, blkno);
-
-	LockBuffer(buf, BUFFER_LOCK_SHARE);
+	/* First page is already locked for exclusive update of index */
+	if (blkno == FIRST_PAGE && hnsw->lockbuf != InvalidBuffer)
+	{
+		buf = hnsw->lockbuf;
+	}
+	else if (hnsw->writebuf != InvalidBuffer && BufferGetBlockNumber(hnsw->writebuf) == blkno)
+	{
+		buf = hnsw->writebuf;
+	}
+	else
+	{
+		buf = ReadBuffer(hnsw->rel, blkno);
+		LockBuffer(buf, BUFFER_LOCK_SHARE);
+	}
 	page = BufferGetPage(buf);
 
-	hnsw_check_meta(meta, page);
+	if (blkno == FIRST_PAGE)
+		hnsw_check_meta(meta, page);
 
 	item_id = PageGetItemId(page, FirstOffsetNumber + idx % meta->elems_per_page);
 	item = PageGetItem(page, item_id);
@@ -539,7 +594,9 @@ void hnsw_end_read(HnswMetadata* meta)
 	HnswIndex* hnsw = (HnswIndex*)meta;
 	if (hnsw->n_buffers == 0)
 		elog(ERROR, "HNSW stack is empty");
-	UnlockReleaseBuffer(hnsw->buffers[--hnsw->n_buffers]);
+	hnsw->n_buffers -= 1;
+	if (hnsw->buffers[hnsw->n_buffers] != hnsw->lockbuf && hnsw->buffers[hnsw->n_buffers] != hnsw->writebuf)
+		UnlockReleaseBuffer(hnsw->buffers[hnsw->n_buffers]);
 }
 
 void hnsw_begin_write(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label)
@@ -551,15 +608,25 @@ void hnsw_begin_write(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** 
 	Item item;
 	Buffer buf;
 
-	buf = ReadBuffer(hnsw->rel, blkno);
+	Assert(hnsw->lockbuf != InvalidBuffer); /* index should be exclsuively locked */
 
-	if (hnsw->xlog_state)
+	if (hnsw->xlog_state || hnsw->writebuf != InvalidBuffer)
 		elog(ERROR, "More than two concurrent write operations");
 
 	if (hnsw->n_buffers >= HNSW_STACK_SIZE)
 		elog(ERROR, "HNSW stack overflow");
 
-	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+	/* First page is already locked for exclusive update of index */
+	if (blkno == FIRST_PAGE)
+	{
+		buf = hnsw->lockbuf;
+	}
+	else
+	{
+		buf = ReadBuffer(hnsw->rel, blkno);
+		hnsw->writebuf = buf;
+		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+	}
 	if (hnsw->unlogged)
 	{
 		hnsw->xlog_state = NULL;
@@ -570,7 +637,6 @@ void hnsw_begin_write(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** 
 		hnsw->xlog_state = GenericXLogStart(hnsw->rel);
 		page = GenericXLogRegisterBuffer(hnsw->xlog_state, buf, 0);
 	}
-	hnsw_check_meta(meta, page);
 
 	item_id = PageGetItemId(page, FirstOffsetNumber + idx % meta->elems_per_page);
 	item = PageGetItem(page, item_id);
@@ -601,7 +667,12 @@ void hnsw_end_write(HnswMetadata* meta)
 		GenericXLogFinish(hnsw->xlog_state);
 		hnsw->xlog_state = NULL;
 	}
-	UnlockReleaseBuffer(hnsw->buffers[hnsw->n_buffers]);
+	if (hnsw->buffers[hnsw->n_buffers] != hnsw->lockbuf)
+	{
+		Assert(hnsw->buffers[hnsw->n_buffers] == hnsw->writebuf);
+		hnsw->writebuf = InvalidBuffer;
+		UnlockReleaseBuffer(hnsw->buffers[hnsw->n_buffers]);
+	}
 }
 
 
