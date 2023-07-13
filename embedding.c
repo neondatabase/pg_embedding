@@ -345,25 +345,15 @@ hnsw_validate(Oid opclassoid)
 	return true;
 }
 
-/*
- * Build the index for a logged table
- */
-static IndexBuildResult *
-hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
+
+/* We need to initialize firtst page to avoid race condition on insert */
+static void hnsw_init_first_page(HnswIndex* hnsw, ForkNumber forknum)
 {
-	HnswIndex* hnsw = hnsw_get_index(index);
-	IndexBuildResult* result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
 	Buffer buf;
 	HnswPageOpaque* opq;
 	Page page;
 
-	hnsw->unlogged = true;
-	#ifdef NEON_SMGR
-	smgr_start_unlogged_build(RelationGetSmgr(index));
-	#endif
-
-	/* We need to initialize firtst page to avoid race condition on insert */
-	buf = ReadBuffer(hnsw->rel, P_NEW);
+	buf = ReadBufferExtended(hnsw->rel, forknum, P_NEW, RBM_NORMAL, NULL);
 	Assert(BufferGetBlockNumber(buf) == FIRST_PAGE);
 	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 	page = BufferGetPage(buf);
@@ -373,6 +363,23 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 	opq->maxM = (uint16_t)hnsw->meta.maxM;
 	MarkBufferDirty(buf);
 	UnlockReleaseBuffer(buf);
+}
+
+/*
+ * Build the index for a logged table
+ */
+static IndexBuildResult *
+hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
+{
+	HnswIndex* hnsw = hnsw_get_index(index);
+	IndexBuildResult* result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+
+	hnsw->unlogged = true;
+	#ifdef NEON_SMGR
+	smgr_start_unlogged_build(RelationGetSmgr(index));
+	#endif
+
+	hnsw_init_first_page(hnsw, MAIN_FORKNUM);
 
 	hnsw_populate(hnsw, index, heap);
 
@@ -457,10 +464,10 @@ static void hnsw_check_meta(HnswMetadata* meta, Page page)
 
 static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 {
-	BlockNumber rel_size = RelationGetNumberOfBlocks(hnsw->rel);
+	BlockNumber rel_size;
 	GenericXLogState *state = NULL;
 	OffsetNumber ins_offs = 0;
-	bool extend = rel_size == 0;
+	bool extend = false;
 	idx_t cur_c;
 	Buffer buf;
 	Page page;
@@ -473,22 +480,32 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 	memcpy(item + hnsw->meta.offset_label, &label, sizeof(label_t));
 
 
+	/* First obtain exclusive lock oni first page: itis needed to sycnhronize access to the index.
+	 * We done not support concurrent inserted because HNSW insert algorithm can acess pages in arbitrary ortder and sop cause deadlock
+	 */
 	Assert(hnsw->lockbuf == InvalidBuffer);
-	if (rel_size > 1)
-	{
-		/* First obtain exclusive lock oni first page: itis needed to sycnhronize access to the index.
-		 * We done not support concurrent inserted because HNSW insert algorithm can acess pages in arbitrary ortder and sop cause deadlock
-		 */
-		hnsw->lockbuf = ReadBuffer(hnsw->rel, FIRST_PAGE);
-		LockBuffer(hnsw->lockbuf, BUFFER_LOCK_EXCLUSIVE);
-	}
+	hnsw->lockbuf = ReadBuffer(hnsw->rel, FIRST_PAGE);
+	LockBuffer(hnsw->lockbuf, BUFFER_LOCK_EXCLUSIVE);
+	/* Obtain size under lock */
+	rel_size = RelationGetNumberOfBlocks(hnsw->rel);
+
 	while (true)
 	{
-		buf = ReadBuffer(hnsw->rel, extend ? P_NEW : rel_size-1);
-		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-
-		if (hnsw->lockbuf == InvalidBuffer)
-			hnsw->lockbuf = buf;
+		if (extend)
+		{
+			buf = ReadBuffer(hnsw->rel, P_NEW);
+			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+		}
+		else
+		{
+			if (rel_size-1 != FIRST_PAGE)
+			{
+				buf = ReadBuffer(hnsw->rel, rel_size - 1);
+				LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+			}
+			else
+				buf = hnsw->lockbuf;
+		}
 
 		if (!hnsw->unlogged)
 			state = GenericXLogStart(hnsw->rel);
@@ -682,6 +699,9 @@ void hnsw_end_write(HnswMetadata* meta)
 static void
 hnsw_buildempty(Relation index)
 {
+	HnswIndex* hnsw = hnsw_get_index(index);
+	hnsw_init_first_page(hnsw, INIT_FORKNUM);
+	pfree(hnsw);
 }
 
 /*
