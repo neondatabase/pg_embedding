@@ -131,7 +131,8 @@ static void
 hnsw_check_available_memory(Size requested)
 {
 	size_t total;
-	if (sysctlbyname("hw.memsize", NULL, &total, NULL, 0) < 0)
+	size_t sizeof_total = sizeof(total);
+	if (sysctlbyname("hw.memsize", &total, &sizeof_total, NULL, 0) < 0)
 		elog(ERROR, "Failed to get amount of RAM: %m");
 
 	if ((Size)NBuffers*BLCKSZ + requested >= total)
