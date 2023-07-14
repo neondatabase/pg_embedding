@@ -26,6 +26,7 @@ typedef struct {
 	int efConstruction;
 	int efSearch;
 	int M;
+        HNSW_DistType dist_type;
 } HnswOptions;
 
 static relopt_kind hnsw_relopt_kind;
@@ -67,6 +68,13 @@ PGDLLEXPORT void _PG_init(void);
 
 static hnsw_index_hash *hnsw_indexes;
 
+static relopt_enum_elt_def distfuncs[] =
+{
+    { "L2", HNSW_Dist_L2 },
+    { "manhattan", HNSW_Dist_Manhattan },
+    {},
+};
+
 /*
  * Initialize index options and variables
  */
@@ -84,6 +92,10 @@ _PG_init(void)
 					  16, 1, INT_MAX, AccessExclusiveLock);
 	add_int_reloption(hnsw_relopt_kind, "efsearch", "Number of inspected neighbors during index search",
 					  64, 1, INT_MAX, AccessExclusiveLock);
+        add_enum_reloption(hnsw_relopt_kind, "distfunc", "Distance function used by index",
+                           distfuncs, HNSW_Dist_L2,
+                           "Valid values are \"L2\" and \"manhattan\".",
+                           AccessExclusiveLock);
 	hnsw_indexes = hnsw_index_create(TopMemoryContext, INDEX_HASH_SIZE, NULL);
 }
 
@@ -223,7 +235,7 @@ hnsw_get_index(Relation indexRel, Relation heapRel)
 
 		if (!exists)
 		{
-			hnsw_init(hnsw, dims, maxelements, M, maxM, opts->efConstruction);
+                        hnsw_init(hnsw, dims, maxelements, M, maxM, opts->efConstruction, opts->dist_type);
 			hnsw_populate(hnsw, indexRel, heapRel);
 		}
 		entry = hnsw_index_insert(hnsw_indexes, indexoid, &found);
@@ -395,7 +407,8 @@ hnsw_options(Datum reloptions, bool validate)
 		{"maxelements", RELOPT_TYPE_INT, offsetof(HnswOptions, maxelements)},
 		{"efconstruction", RELOPT_TYPE_INT, offsetof(HnswOptions, efConstruction)},
 		{"efsearch", RELOPT_TYPE_INT, offsetof(HnswOptions, efSearch)},
-		{"m", RELOPT_TYPE_INT, offsetof(HnswOptions, M)}
+		{"m", RELOPT_TYPE_INT, offsetof(HnswOptions, M)},
+                {"distfunc", RELOPT_TYPE_ENUM, offsetof(HnswOptions, dist_type)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate,

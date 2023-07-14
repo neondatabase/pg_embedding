@@ -15,7 +15,8 @@ extern "C" {
 #include "embedding.h"
 }
 
-struct HierarchicalNSW
+template <HNSW_DistType Dist>
+struct HierarchicalNSW_Impl
 {
 	size_t maxelements;
 	size_t cur_element_count;
@@ -39,8 +40,13 @@ struct HierarchicalNSW
 	char   data_level0_memory[0]; // varying size
 
   public:
-	HierarchicalNSW(size_t dim, size_t maxelements, size_t M, size_t maxM, size_t efConstruction);
-	~HierarchicalNSW();
+        HierarchicalNSW_Impl(
+            size_t dim,
+            size_t maxelements,
+            size_t M,
+            size_t maxM,
+            size_t efConstruction);
+       ~HierarchicalNSW_Impl();
 
 
 	inline coord_t *getDataByInternalId(idx_t internal_id) const {
@@ -67,3 +73,14 @@ struct HierarchicalNSW
 
 	dist_t fstdistfunc(const coord_t *x, const coord_t *y);
 };
+
+struct HierarchicalNSW
+{
+    HNSW_DistType dist_type;
+    union
+    {
+        HierarchicalNSW_Impl<HNSW_Dist_L2> impl_l2;
+        HierarchicalNSW_Impl<HNSW_Dist_Manhattan> impl_manhattan;
+    };
+};
+
