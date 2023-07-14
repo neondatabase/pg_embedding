@@ -32,10 +32,14 @@ HierarchicalNSW::HierarchicalNSW(size_t dim_, size_t maxelements_, size_t M_, si
 
 std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(const coord_t *point, size_t ef)
 {
+    std::priority_queue<std::pair<dist_t, idx_t >> topResults;
+
+	if (cur_element_count == 0)
+		return topResults;
+
 	std::vector<uint32_t> visited;
 	visited.resize((cur_element_count + 31) >> 5);
 
-    std::priority_queue<std::pair<dist_t, idx_t >> topResults;
     std::priority_queue<std::pair<dist_t, idx_t >> candidateSet;
 
     dist_t dist = fstdistfunc(point, getDataByInternalId(enterpoint_node));
