@@ -140,7 +140,9 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
     std::priority_queue<std::pair<dist_t, idx_t >> candidateSet;
 
 	idx_t enterpoint_node = meta->enterpoint_node;
-	hnsw_begin_read(meta, enterpoint_node, NULL, &p_coords, NULL);
+	if (!hnsw_begin_read(meta, enterpoint_node, NULL, &p_coords, NULL))
+		return topResults;
+
     dist_t dist = fstdistfunc(meta, point, p_coords);
 	hnsw_end_read(meta);
 

@@ -24,7 +24,7 @@ typedef struct
 
 extern bool hnsw_search(HnswMetadata* meta, const coord_t *point, size_t* n_results, label_t** results);
 extern bool hnsw_bind_point(HnswMetadata* meta, const coord_t *point, idx_t idx);
-extern void hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label);
+extern bool hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label);
 extern void hnsw_end_read(HnswMetadata* meta);
 extern void hnsw_begin_write(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label);
 extern void hnsw_end_write(HnswMetadata* meta);

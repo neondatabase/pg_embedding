@@ -560,7 +560,7 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 }
 
 
-void hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label)
+bool hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label)
 {
 	HnswIndex* hnsw = (HnswIndex*)meta;
 	BlockNumber blkno = idx/meta->elems_per_page;
@@ -592,6 +592,12 @@ void hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** c
 		hnsw_check_meta(meta, page);
 
 	item_id = PageGetItemId(page, FirstOffsetNumber + idx % meta->elems_per_page);
+	if (!ItemIdHasStorage(item_id))
+	{
+		if (buf != hnsw->lockbuf && buf != hnsw->writebuf)
+			UnlockReleaseBuffer(buf);
+		return false;
+	}
 	item = PageGetItem(page, item_id);
 
 	hnsw->buffers[hnsw->n_buffers++] = buf;
@@ -604,6 +610,7 @@ void hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** c
 
 	if (label)
 		memcpy(label, (char*)item + meta->offset_label, sizeof(*label));
+	return true;
 }
 
 void hnsw_end_read(HnswMetadata* meta)
