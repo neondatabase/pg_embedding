@@ -239,6 +239,11 @@ hnsw_get_index(Relation indexRel, Relation heapRel, bool build)
 	else
 	{
 		hnsw = entry->hnsw;
+		if (build)
+		{
+			hnsw_reset(hnsw);
+			hnsw_populate(hnsw, indexRel, heapRel);
+		}
 	}
 	return hnsw;
 }
