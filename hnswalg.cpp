@@ -382,3 +382,8 @@ size_t hnsw_sizeof(void)
 {
 	return sizeof(HierarchicalNSW);
 }
+
+void hnsw_reset(HierarchicalNSW* hnsw)
+{
+	hnsw->cur_element_count = 0;
+}

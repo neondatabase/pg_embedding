@@ -13,3 +13,4 @@ void hnsw_init(HierarchicalNSW* hnsw, size_t dim, size_t maxelements, size_t M, 
 int  hnsw_dimensions(HierarchicalNSW* hnsw);
 size_t hnsw_count(HierarchicalNSW* hnsw);
 size_t hnsw_sizeof(void);
+void   hnsw_reset(HierarchicalNSW* hnsw);

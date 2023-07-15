@@ -161,7 +161,7 @@ hnsw_check_available_memory(Size requested)
 #endif
 
 static HierarchicalNSW*
-hnsw_get_index(Relation indexRel, Relation heapRel)
+hnsw_get_index(Relation indexRel, Relation heapRel, bool build)
 {
 	HierarchicalNSW* hnsw;
 	Oid indexoid = RelationGetRelid(indexRel);
@@ -227,6 +227,11 @@ hnsw_get_index(Relation indexRel, Relation heapRel)
 			hnsw_init(hnsw, dims, maxelements, M, maxM, opts->efConstruction);
 			hnsw_populate(hnsw, indexRel, heapRel);
 		}
+		else if (build)
+		{
+			hnsw_reset(hnsw);
+			hnsw_populate(hnsw, indexRel, heapRel);
+		}
 		entry = hnsw_index_insert(hnsw_indexes, indexoid, &found);
 		Assert(!found);
 		entry->hnsw = hnsw;
@@ -247,7 +252,7 @@ hnsw_beginscan(Relation index, int nkeys, int norderbys)
 	IndexScanDesc scan = RelationGetIndexScan(index, nkeys, norderbys);
 	HnswScanOpaque so = (HnswScanOpaque) palloc(sizeof(HnswScanOpaqueData));
 	Relation heap = relation_open(index->rd_index->indrelid, NoLock);
-	so->hnsw = hnsw_get_index(index, heap);
+	so->hnsw = hnsw_get_index(index, heap, false);
 	relation_close(heap, NoLock);
 	so->curr = 0;
 	so->n_results = 0;
@@ -420,7 +425,7 @@ hnsw_validate(Oid opclassoid)
 static IndexBuildResult *
 hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 {
-	HierarchicalNSW* hnsw = hnsw_get_index(index, heap);
+	HierarchicalNSW* hnsw = hnsw_get_index(index, heap, true);
 	IndexBuildResult* result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
 	result->heap_tuples = result->index_tuples = hnsw_count(hnsw);
 
@@ -436,7 +441,7 @@ hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 			  bool indexUnchanged,
 			  IndexInfo *indexInfo)
 {
-	HierarchicalNSW* hnsw = hnsw_get_index(index, heap);
+	HierarchicalNSW* hnsw = hnsw_get_index(index, heap, false);
 	Datum value;
 	ArrayType* array;
 	int n_items;
