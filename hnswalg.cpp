@@ -1,4 +1,5 @@
 #include "hnswalg.h"
+#include <cmath>
 
 #if defined(__GNUC__)
 #define PORTABLE_ALIGN32 __attribute__((aligned(32)))
@@ -257,7 +258,7 @@ dist_t dist_manhattan_scalar(const coord_t *x, const coord_t *y, size_t n)
     #pragma clang loop vectorize(enable)
     for (size_t i = 0; i < n; i++)
     {
-        dist_t diff = x[i] - y[i];
+        dist_t diff = std::abs(x[i] - y[i]);
         distance += diff;
     }
     return distance;
@@ -272,12 +273,14 @@ dist_t dist_manhattan_avx2(const coord_t *x, const coord_t *y, size_t n)
     const size_t elts_per_vector = sizeof(__m256) / sizeof(coord_t);
     float partial_result[elts_per_vector];
     __m256 accumulator = _mm256_setzero_ps();
+    __m256 vecMask = _mm256_set1_ps(-0.0f);
     for(size_t i = 0; i < n; i += elts_per_vector)
     {
         __m256 vecX = _mm256_loadu_ps(x + i);
         __m256 vecY = _mm256_loadu_ps(y + i);
         __m256 vecSub = _mm256_sub_ps(vecX, vecY);
-        accumulator = _mm256_add_ps(accumulator, vecSub);
+        __m256 vecAbs = _mm256_andnot_ps(vecMask, vecSub);
+        accumulator = _mm256_add_ps(accumulator, vecAbs);
     }
     _mm256_storeu_ps(partial_result, accumulator);
     float res1 = partial_result[0] + partial_result[4];
@@ -298,78 +301,74 @@ dist_t dist_manhattan_avx2(const coord_t *x, const coord_t *y, size_t n)
     return res1;
 }
 
-__attribute__((target("avx2")))
+__attribute__((target("avx2,fma")))
 dist_t dist_l2_avx2(const coord_t *x, const coord_t *y, size_t n)
 {
-    const size_t TmpResSz = sizeof(__m256) / sizeof(float);
-    float PORTABLE_ALIGN32 TmpRes[TmpResSz];
-    size_t qty16 = n / 16;
-    const float *pEnd1 = x + (qty16 * 16);
-    __m256 diff, v1, v2;
-    __m256 sum = _mm256_set1_ps(0);
+    constexpr size_t elts_per_vector = sizeof(__m256) / sizeof(coord_t);
+    constexpr size_t unroll = 2;
+    constexpr size_t elts_per_loop = elts_per_vector * unroll;
+    float partial_result[elts_per_vector];
+    __m256 accum1 = _mm256_setzero_ps();
+    __m256 accum2 = _mm256_setzero_ps();
+    for(size_t i = 0; i < n; i += elts_per_loop)
+    {
+        __m256 vecX1 = _mm256_loadu_ps(x + i);
+        __m256 vecY1 = _mm256_loadu_ps(y + i);
+        __m256 vecSub1 = _mm256_sub_ps(vecX1, vecY1);
+        accum1 = _mm256_fmadd_ps(vecSub1, vecSub1, accum2);
 
-    while (x < pEnd1) {
-        v1 = _mm256_loadu_ps(x);
-        x += 8;
-        v2 = _mm256_loadu_ps(y);
-        y += 8;
-        diff = _mm256_sub_ps(v1, v2);
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
-
-        v1 = _mm256_loadu_ps(x);
-        x += 8;
-        v2 = _mm256_loadu_ps(y);
-        y += 8;
-        diff = _mm256_sub_ps(v1, v2);
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
+        __m256 vecX2 = _mm256_loadu_ps(x + i + elts_per_vector);
+        __m256 vecY2 = _mm256_loadu_ps(y + i + elts_per_vector);
+        __m256 vecSub2 = _mm256_sub_ps(vecX2, vecY2);
+        accum2 = _mm256_fmadd_ps(vecSub2, vecSub2, accum2);
     }
-    _mm256_store_ps(TmpRes, sum);
-    float res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
-    return (res);
+    accum1 = _mm256_add_ps(accum1, accum2);
+    _mm256_storeu_ps(partial_result, accum1);
+    float res1 = partial_result[0] + partial_result[4];
+    float res2 = partial_result[1] + partial_result[5];
+    float res3 = partial_result[2] + partial_result[6];
+    float res4 = partial_result[3] + partial_result[7];
+    res1 += res3;
+    res2 += res4;
+    res1 += res2;
+
+    size_t tail_size = n % elts_per_loop;
+    size_t tail = n - tail_size;
+    for(int i = 0; i < tail_size; i++)
+    {
+        dist_t dist = x[tail + i] - y[tail + i];
+        res1 += dist;
+    } 
+    return res1;
 }
 
 dist_t dist_l2_sse(const coord_t *x, const coord_t *y, size_t n)
 {
-    const size_t TmpResSz = sizeof(__m128) / sizeof(float);
-    float PORTABLE_ALIGN32 TmpRes[TmpResSz];
-    size_t qty16 = n / 16;
-    const float *pEnd1 = x + (qty16 * 16);
-
-    __m128 diff, v1, v2;
-    __m128 sum = _mm_set1_ps(0);
-
-    while (x < pEnd1) {
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
+    const size_t elts_per_vector = sizeof(__m128) / sizeof(coord_t);
+    float partial_result[elts_per_vector];
+    __m128 accumulator = _mm_setzero_ps();
+    for(size_t i = 0; i < n; i += elts_per_vector)
+    {
+        __m128 vecX = _mm_loadu_ps(x + i);
+        __m128 vecY = _mm_loadu_ps(y + i);
+        __m128 vecSub = _mm_sub_ps(vecX, vecY);
+        __m128 vecSquare = _mm_mul_ps(vecSub, vecSub);
+        accumulator = _mm_add_ps(vecSquare, accumulator);
     }
-    _mm_store_ps(TmpRes, sum);
-    float res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
-    return res;
+    _mm_storeu_ps(partial_result, accumulator);
+    float res1 = partial_result[0] + partial_result[2];
+    float res2 = partial_result[1] + partial_result[3];
+    res1 += res2;
+
+    size_t tail_size = n % elts_per_vector;
+    size_t tail = n - tail_size;
+    for(int i = 0; i < tail_size; i++)
+    {
+        dist_t diff = x[tail + i] - y[tail + i];
+        dist_t square = diff * diff;
+        res1 += square;
+    }
+    return res1;
 }
 #endif
 
