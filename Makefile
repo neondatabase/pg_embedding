@@ -3,16 +3,16 @@ EXTVERSION = 0.1.0
 
 MODULE_big = embedding
 DATA = $(wildcard *--*.sql)
-OBJS = embedding.o hnswalg.o
+OBJS = embedding.o hnswalg.o distfunc.o
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-extension=embedding
 
 # For auto-vectorization:
-# - GCC (needs -ftree-vectorize OR -O3) - https://gcc.gnu.org/projects/tree-ssa/vectorization.html
-PG_CFLAGS += -O3
-PG_CXXFLAGS += -O3 -std=c++11
+# - GCC&clang needs -Ofast or -O3: https://gcc.gnu.org/projects/tree-ssa/vectorization.html
+PG_CFLAGS += -Ofast
+PG_CXXFLAGS += -std=c++11
 PG_LDFLAGS += -lstdc++
 
 all: $(EXTENSION)--$(EXTVERSION).sql
