@@ -295,7 +295,7 @@ dist_t dist_manhattan_avx2(const coord_t *x, const coord_t *y, size_t n)
     size_t tail = n - tail_size;
     for(int i = 0; i < tail_size; i++)
     {
-        dist_t dist = x[tail + i] - y[tail + i];
+        dist_t dist = std::abs(x[tail + i] - y[tail + i]);
         res1 += dist;
     }
     return res1;
@@ -337,7 +337,7 @@ dist_t dist_l2_avx2(const coord_t *x, const coord_t *y, size_t n)
     for(int i = 0; i < tail_size; i++)
     {
         dist_t dist = x[tail + i] - y[tail + i];
-        res1 += dist;
+        res1 += dist * dist;
     } 
     return res1;
 }
