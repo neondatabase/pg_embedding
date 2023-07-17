@@ -5,4 +5,4 @@ This product includes software developed at
 Neon Inc. (https://www.neon.tech/).
 
 This product includes software from the ivf-hnsw project (https://github.com/dbaranchuk/ivf-hnsw),
-which is licensed under the MIT License. See the LICENSES/LICENSE.ivf-hnsw file for details.
+which is licensed under the MIT License. See the ivf-hnsw [LICENCE](https://github.com/dbaranchuk/ivf-hnsw/blob/master/LICENSE) file for details.
