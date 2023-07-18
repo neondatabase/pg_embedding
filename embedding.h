@@ -4,7 +4,13 @@ typedef float    coord_t;
 typedef float    dist_t;
 typedef uint32_t idx_t;
 typedef uint64_t label_t;
-typedef dist_t (*dist_func_t)(coord_t const* ax, coord_t const* bx, size_t size);
+
+
+typedef enum {
+	DIST_L2,
+	DIST_COSINE,
+	DIST_MANHATTAN
+} dist_func_t;
 
 typedef struct HierarchicalNSW HierarchicalNSW;
 typedef struct DistanceFuncCtx DistanceFuncCtx;
@@ -21,4 +27,5 @@ dist_t l2_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim);
 dist_t cosine_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim);
 dist_t manhattan_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim);
 
+dist_t hnsw_dist_func(dist_func_t func, coord_t const* ax, coord_t const* bx, size_t dim);
 void  hnsw_set_dist_func(HierarchicalNSW* hnsw, dist_func_t dist_func);

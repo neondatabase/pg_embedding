@@ -21,6 +21,8 @@
 
 PG_MODULE_MAGIC;
 
+typedef dist_t (*dist_fptr_t)(coord_t const* ax, coord_t const* bx, size_t size);
+
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
 PGDLLEXPORT PG_FUNCTION_INFO_V1(cosine_distance);
 PGDLLEXPORT PG_FUNCTION_INFO_V1(manhattan_distance);
@@ -118,11 +120,26 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label);
 }
 
+static dist_func_t
+hnsw_resolve_dist_func(Relation index)
+{
+	FmgrInfo* proc_info = index_getprocinfo(index, 1, HNSW_DISTANCE_PROC);
+	if (proc_info->fn_addr == l2_distance)
+		return DIST_L2;
+	else if (proc_info->fn_addr == cosine_distance)
+		return DIST_COSINE;
+	else if (proc_info->fn_addr == manhattan_distance)
+		return DIST_MANHATTAN;
+	else
+		elog(ERROR, "Function is not supported by HNSW inodex");
+}
+
 static void
 hnsw_populate(HierarchicalNSW* hnsw, Relation indexRel, Relation heapRel)
 {
 	IndexInfo* indexInfo = BuildIndexInfo(indexRel);
 	Assert(indexInfo->ii_NumIndexAttrs == 1);
+	hnsw_set_dist_func(hnsw, hnsw_resolve_dist_func(indexRel));
 	table_index_build_scan(heapRel, indexRel, indexInfo,
 						   true, true, hnsw_build_callback, (void *) hnsw, NULL);
 }
@@ -164,20 +181,6 @@ hnsw_check_available_memory(Size requested)
 }
 
 #endif
-
-static dist_func_t
-hnsw_resolve_dist_func(Relation index)
-{
-	FmgrInfo* proc_info = index_getprocinfo(index, 1, HNSW_DISTANCE_PROC);
-	if (proc_info->fn_addr == l2_distance)
-		return l2_dist_impl;
-	else if (proc_info->fn_addr == cosine_distance)
-		return cosine_dist_impl;
-	else if (proc_info->fn_addr == manhattan_distance)
-		return manhattan_dist_impl;
-	else
-		elog(ERROR, "Function is not supported by HNSW inodex");
-}
 
 static HierarchicalNSW*
 hnsw_get_index(Relation indexRel, Relation heapRel, bool build)
@@ -250,7 +253,6 @@ hnsw_get_index(Relation indexRel, Relation heapRel, bool build)
 			exists = false;
 		}
 		hnsw = (HierarchicalNSW*)mapped_address;
-		hnsw_set_dist_func(hnsw, hnsw_resolve_dist_func(indexRel));
 		if (!exists)
 		{
 			hnsw_init(hnsw, dims, maxelements, M, maxM, opts->efConstruction);

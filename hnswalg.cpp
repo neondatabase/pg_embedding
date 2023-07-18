@@ -25,7 +25,6 @@ HierarchicalNSW::HierarchicalNSW(size_t dim_, size_t maxelements_, size_t M_, si
 
     enterpoint_node = 0;
     cur_element_count = 0;
-	dist_func = NULL;
 }
 
 std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(const coord_t *point, size_t ef)
@@ -40,7 +39,7 @@ std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(c
 
     std::priority_queue<std::pair<dist_t, idx_t >> candidateSet;
 
-    dist_t dist = dist_func(point, getDataByInternalId(enterpoint_node), dim);
+    dist_t dist = hnsw_dist_func(dist_func, point, getDataByInternalId(enterpoint_node), dim);
 
     topResults.emplace(dist, enterpoint_node);
     candidateSet.emplace(-dist, enterpoint_node);
@@ -69,7 +68,7 @@ std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(c
             if (!(visited[tnum >> 5] & (1 << (tnum & 31)))) {
 				visited[tnum >> 5] |= 1 << (tnum & 31);
 
-                dist = dist_func(point, getDataByInternalId(tnum), dim);
+                dist = hnsw_dist_func(dist_func, point, getDataByInternalId(tnum), dim);
 
                 if (topResults.top().first > dist || topResults.size() < ef) {
                     candidateSet.emplace(-dist, tnum);
@@ -110,8 +109,10 @@ void HierarchicalNSW::getNeighborsByHeuristic(std::priority_queue<std::pair<dist
         resultSet.pop();
         bool good = true;
         for (std::pair<dist_t, idx_t> curen2 : returnlist) {
-            dist_t curdist = dist_func(getDataByInternalId(curen2.second),
-									   getDataByInternalId(curen.second), dim);
+            dist_t curdist = hnsw_dist_func(dist_func,
+											getDataByInternalId(curen2.second),
+											getDataByInternalId(curen.second),
+											dim);
             if (curdist < dist_to_query) {
                 good = false;
                 break;
@@ -165,13 +166,20 @@ void HierarchicalNSW::mutuallyConnectNewElement(const coord_t *point, idx_t cur_
         } else {
             // finding the "weakest" element to replace it with the new one
             idx_t *data = ll_other + 1;
-            dist_t d_max = dist_func(getDataByInternalId(cur_c), getDataByInternalId(res[idx]), dim);
+            dist_t d_max = hnsw_dist_func(dist_func,
+										  getDataByInternalId(cur_c),
+										  getDataByInternalId(res[idx]),
+										  dim);
             // Heuristic:
             std::priority_queue<std::pair<dist_t, idx_t>> candidates;
             candidates.emplace(d_max, cur_c);
 
             for (size_t j = 0; j < sz_link_list_other; j++)
-                candidates.emplace(dist_func(getDataByInternalId(data[j]), getDataByInternalId(res[idx]), dim), data[j]);
+                candidates.emplace(hnsw_dist_func(dist_func,
+												  getDataByInternalId(data[j]),
+												  getDataByInternalId(res[idx]),
+												  dim),
+								   data[j]);
 
             getNeighborsByHeuristic(candidates, resMmax);
 

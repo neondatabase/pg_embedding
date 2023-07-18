@@ -37,4 +37,14 @@ dist_t manhattan_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 	return distance;
 }
 
+static dist_t (*const dist_func_table[])(coord_t const* ax, coord_t const* bx, size_t size) =
+{
+	l2_dist_impl,
+	cosine_dist_impl,
+	manhattan_dist_impl
+};
 
+dist_t hnsw_dist_func(dist_func_t func, coord_t const* ax, coord_t const* bx, size_t dim)
+{
+	return dist_func_table[func](ax, bx, dim);
+}
