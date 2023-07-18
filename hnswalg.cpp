@@ -13,119 +13,6 @@ extern "C" {
 #include "embedding.h"
 }
 
-dist_t fstdistfunc_scalar(const coord_t *x, const coord_t *y, size_t n)
-{
-    dist_t 	distance = 0.0;
-
-    for (size_t i = 0; i < n; i++)
-    {
-        dist_t diff = x[i] - y[i];
-        distance += diff * diff;
-    }
-    return distance;
-
-}
-
-#ifdef __x86_64__
-#include <immintrin.h>
-
-
-#if defined(__GNUC__)
-#define PORTABLE_ALIGN32 __attribute__((aligned(32)))
-#else
-#define PORTABLE_ALIGN32 __declspec(align(32))
-#endif
-
-__attribute__((target("avx2")))
-dist_t fstdistfunc_avx2(const coord_t *x, const coord_t *y, size_t n)
-{
-    const size_t TmpResSz = sizeof(__m256) / sizeof(float);
-    float PORTABLE_ALIGN32 TmpRes[TmpResSz];
-    size_t qty16 = n / 16;
-    const float *pEnd1 = x + (qty16 * 16);
-    __m256 diff, v1, v2;
-    __m256 sum = _mm256_set1_ps(0);
-
-    while (x < pEnd1) {
-        v1 = _mm256_loadu_ps(x);
-        x += 8;
-        v2 = _mm256_loadu_ps(y);
-        y += 8;
-        diff = _mm256_sub_ps(v1, v2);
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
-
-        v1 = _mm256_loadu_ps(x);
-        x += 8;
-        v2 = _mm256_loadu_ps(y);
-        y += 8;
-        diff = _mm256_sub_ps(v1, v2);
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
-    }
-    _mm256_store_ps(TmpRes, sum);
-    float res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
-    return (res);
-}
-
-dist_t fstdistfunc_sse(const coord_t *x, const coord_t *y, size_t n)
-{
-    const size_t TmpResSz = sizeof(__m128) / sizeof(float);
-    float PORTABLE_ALIGN32 TmpRes[TmpResSz];
-    size_t qty16 = n / 16;
-    const float *pEnd1 = x + (qty16 * 16);
-
-    __m128 diff, v1, v2;
-    __m128 sum = _mm_set1_ps(0);
-
-    while (x < pEnd1) {
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-    }
-    _mm_store_ps(TmpRes, sum);
-    float res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
-    return res;
-}
-#endif
-
-inline dist_t
-fstdistfunc(HnswMetadata* meta, const coord_t *x, const coord_t *y)
-{
-	size_t dim = meta->dim;
-#ifndef __x86_64__
-    return fstdistfunc_scalar(x, y, dim);
-#else
-    if(meta->use_avx2)
-        return fstdistfunc_avx2(x, y, dim);
-
-    return fstdistfunc_sse(x, y, dim);
-#endif
-}
-
-
 static std::priority_queue<std::pair<dist_t, idx_t>>
 searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 {
@@ -143,7 +30,7 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 	if (!hnsw_begin_read(meta, enterpoint_node, NULL, &p_coords, NULL))
 		return topResults;
 
-    dist_t dist = fstdistfunc(meta, point, p_coords);
+    dist_t dist = hnsw_dist_func(meta, point, p_coords);
 	hnsw_end_read(meta);
 
     topResults.emplace(dist, enterpoint_node);
@@ -173,7 +60,7 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 				visited[tnum >> 5] |= 1 << (tnum & 31);
 
 				hnsw_begin_read(meta, tnum, NULL, &p_coords, NULL);
-                dist = fstdistfunc(meta, point, p_coords);
+                dist = hnsw_dist_func(meta, point, p_coords);
 				hnsw_end_read(meta);
 
                 if (topResults.top().first > dist || topResults.size() < ef) {
@@ -218,7 +105,7 @@ void getNeighborsByHeuristic(HnswMetadata* meta, std::priority_queue<std::pair<d
 			coord_t *p_coords, *p_coords2;
 			hnsw_begin_read(meta, curen2.second, NULL, &p_coords2, NULL);
 			hnsw_begin_read(meta, curen.second, NULL, &p_coords, NULL);
-            dist_t curdist = fstdistfunc(meta, p_coords2, p_coords);
+            dist_t curdist = hnsw_dist_func(meta, p_coords2, p_coords);
 			hnsw_end_read(meta);
 			hnsw_end_read(meta);
             if (curdist < dist_to_query) {
@@ -276,7 +163,7 @@ void mutuallyConnectNewElement(HnswMetadata* meta, const coord_t *point, idx_t c
         } else {
             // finding the "weakest" element to replace it with the new one
 			hnsw_begin_read(meta, cur_c, NULL, &p_coord2, NULL);
-            dist_t d_max = fstdistfunc(meta, p_coord2, p_coord);
+            dist_t d_max = hnsw_dist_func(meta, p_coord2, p_coord);
 			hnsw_end_read(meta);
             // Heuristic:
             std::priority_queue<std::pair<dist_t, idx_t>> candidates;
@@ -285,7 +172,7 @@ void mutuallyConnectNewElement(HnswMetadata* meta, const coord_t *point, idx_t c
             for (size_t j = 0; j < sz_link_list_other; j++)
 			{
 				hnsw_begin_read(meta, p_indexes[1 + j], NULL, &p_coord2, NULL);
-				candidates.emplace(fstdistfunc(meta, p_coord2, p_coord), p_indexes[1 + j]);
+				candidates.emplace(hnsw_dist_func(meta, p_coord2, p_coord), p_indexes[1 + j]);
 				hnsw_end_read(meta);
 			}
             getNeighborsByHeuristic(meta, candidates, resMmax);

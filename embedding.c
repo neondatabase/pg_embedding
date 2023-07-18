@@ -20,8 +20,13 @@
 
 PG_MODULE_MAGIC;
 
+#define HNSW_DISTANCE_PROC 1
 #define HNSW_STACK_SIZE 4
 #define FIRST_PAGE      0
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(cosine_distance);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(manhattan_distance);
 
 /*
  * Postgres specific part of HNSW index.
@@ -99,7 +104,6 @@ _PG_init(void)
 					  DEFAULT_EF_SEARCH, 1, INT_MAX, AccessExclusiveLock);
 }
 
-
 static void
 hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 					bool *isnull, bool tupleIsAlive, void *state)
@@ -128,6 +132,20 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	pfree(array);
 }
 
+static dist_func_t
+hnsw_resolve_dist_func(Relation index)
+{
+	FmgrInfo* proc_info = index_getprocinfo(index, 1, HNSW_DISTANCE_PROC);
+	if (proc_info->fn_addr == l2_distance)
+		return DIST_L2;
+	else if (proc_info->fn_addr == cosine_distance)
+		return DIST_COSINE;
+	else if (proc_info->fn_addr == manhattan_distance)
+		return DIST_MANHATTAN;
+	else
+		elog(ERROR, "Function is not supported by HNSW inodex");
+}
+
 static void
 hnsw_populate(HnswIndex* hnsw, Relation indexRel, Relation heapRel)
 {
@@ -154,12 +172,10 @@ hnsw_get_index(Relation indexRel)
 	hnsw->meta.size_data_per_element = hnsw->meta.offset_label + sizeof(label_t);
 	hnsw->meta.elems_per_page = (BLCKSZ - MAXALIGN(SizeOfPageHeaderData) - sizeof(HnswPageOpaque)) / (hnsw->meta.size_data_per_element + sizeof(ItemIdData));
 	if (hnsw->meta.elems_per_page == 0)
-		elog(ERROR, "Elem,ent doesn't fit in Postgres page");
+		elog(ERROR, "Element doesn't fit in Postgres page");
 	hnsw->meta.efConstruction = opts->efConstruction;
 	hnsw->meta.efSearch = opts->efSearch;
-#ifdef __x86_64__
-    hnsw->meta.use_avx2 = __builtin_cpu_supports("avx2");
-#endif
+    hnsw->meta.dist_func = hnsw_resolve_dist_func(indexRel);
 	hnsw->meta.enterpoint_node = 0;
 	hnsw->rel = indexRel;
 	hnsw->n_buffers = 0;
@@ -751,7 +767,7 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
 	amroutine->amstrategies = 0;
-	amroutine->amsupport = 0;
+	amroutine->amsupport = 1;
 	amroutine->amoptsprocnum = 0;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
@@ -802,7 +818,6 @@ hnsw_handler(PG_FUNCTION_ARGS)
 /*
  * Get the L2 distance between vectors
  */
-PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
 Datum
 l2_distance(PG_FUNCTION_ARGS)
 {
@@ -810,8 +825,6 @@ l2_distance(PG_FUNCTION_ARGS)
 	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
 	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
 	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
-	dist_t 		distance = 0.0;
-	dist_t		diff;
 	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
 	coord_t	   *bx = (coord_t*)ARR_DATA_PTR(b);
 
@@ -822,11 +835,46 @@ l2_distance(PG_FUNCTION_ARGS)
 				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
 	}
 
-	for (int i = 0; i < a_dim; i++)
+	PG_RETURN_FLOAT4((dist_t)sqrt(l2_dist_impl(ax, bx, a_dim)));
+}
+
+Datum
+cosine_distance(PG_FUNCTION_ARGS)
+{
+	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
+	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
+	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
+	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
+	coord_t	   *bx = (coord_t*)ARR_DATA_PTR(b);
+
+	if (a_dim != b_dim)
 	{
-		diff = ax[i] - bx[i];
-		distance += diff * diff;
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
 	}
 
-	PG_RETURN_FLOAT4((dist_t)sqrt(distance));
+	PG_RETURN_FLOAT4(cosine_dist_impl(ax, bx, a_dim));
 }
+
+Datum
+manhattan_distance(PG_FUNCTION_ARGS)
+{
+	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
+	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
+	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
+	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
+	coord_t	   *bx = (coord_t*)ARR_DATA_PTR(b);
+
+	if (a_dim != b_dim)
+ 	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
+ 	}
+
+	PG_RETURN_FLOAT4(manhattan_dist_impl(ax, bx, a_dim));
+ }
+

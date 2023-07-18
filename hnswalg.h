@@ -43,6 +43,4 @@ struct HierarchicalNSW : HnswMetadata
 	void addPoint(const coord_t *point, label_t label);
 
 	std::priority_queue<std::pair<dist_t, label_t>> searchKnn(const coord_t *query_data, size_t k);
-
-	dist_t fstdistfunc(const coord_t *x, const coord_t *y);
 };
