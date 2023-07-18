@@ -1,6 +1,6 @@
 SET enable_seqscan = off;
 CREATE TABLE t (val real[]);
-INSERT INTO t (val) VALUES ('{0,0,0}'), ('{1,2,3}'), ('{1,1,1}'), (NULL);
+INSERT INTO t (val) VALUES ('{0,1,2}'), ('{1,2,3}'), ('{1,1,1}'), (NULL);
 CREATE INDEX ON t USING hnsw (val) WITH (dims=3, m=3);
 INSERT INTO t (val) VALUES (array[1,2,4]);
 explain SELECT * FROM t ORDER BY val <-> array[3,3,3];
@@ -16,7 +16,7 @@ SELECT * FROM t ORDER BY val <-> array[3,3,3];
  {1,2,3}
  {1,2,4}
  {1,1,1}
- {0,0,0}
+ {0,1,2}
 (4 rows)
 
 SELECT COUNT(*) FROM t;
@@ -24,5 +24,70 @@ SELECT COUNT(*) FROM t;
 -------
      5
 (1 row)
+
+CREATE INDEX ON t USING hnsw (val ann_cos_ops) WITH (dims=3, m=3);
+explain SELECT * FROM t ORDER BY val <=> array[3,3,3];
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Index Scan using t_val_idx1 on t  (cost=4.03..8.08 rows=4 width=36)
+   Order By: (val <=> '{3,3,3}'::real[])
+(2 rows)
+
+SELECT * FROM t ORDER BY val <=> array[3,3,3];
+   val   
+---------
+ {1,1,1}
+ {1,2,3}
+ {1,2,4}
+ {0,1,2}
+(4 rows)
+
+CREATE INDEX ON t USING hnsw (val ann_manhattan_ops) WITH (dims=3, m=3);
+explain SELECT * FROM t ORDER BY val <~> array[3,3,3];
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Index Scan using t_val_idx2 on t  (cost=4.03..8.08 rows=4 width=36)
+   Order By: (val <~> '{3,3,3}'::real[])
+(2 rows)
+
+SELECT * FROM t ORDER BY val <~> array[3,3,3];
+   val   
+---------
+ {1,2,3}
+ {1,2,4}
+ {0,1,2}
+ {1,1,1}
+(4 rows)
+
+SET enable_seqscan = on;
+SELECT * FROM t ORDER BY val <-> array[3,3,3];
+   val   
+---------
+ {1,2,3}
+ {1,2,4}
+ {1,1,1}
+ {0,1,2}
+ 
+(5 rows)
+
+SELECT * FROM t ORDER BY val <=> array[3,3,3];
+   val   
+---------
+ {1,1,1}
+ {1,2,3}
+ {1,2,4}
+ {0,1,2}
+ 
+(5 rows)
+
+SELECT * FROM t ORDER BY val <~> array[3,3,3];
+   val   
+---------
+ {1,2,3}
+ {1,2,4}
+ {0,1,2}
+ {1,1,1}
+ 
+(5 rows)
 
 DROP TABLE t;
