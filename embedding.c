@@ -835,7 +835,7 @@ l2_distance(PG_FUNCTION_ARGS)
 				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
 	}
 
-	PG_RETURN_FLOAT4((dist_t)sqrt(l2_dist_impl(ax, bx, a_dim)));
+	PG_RETURN_FLOAT4(l2_dist_impl(ax, bx, a_dim));
 }
 
 Datum
