@@ -778,6 +778,9 @@ hnsw_bulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
 	HnswIndex* hnsw = hnsw_get_index(index);
 
+	if (stats == NULL)
+		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+
 	for (BlockNumber blkno = FIRST_PAGE; blkno < rel_size; blkno++)
 	{
 		buf = ReadBufferExtended(index, MAIN_FORKNUM, blkno, RBM_NORMAL, bas);

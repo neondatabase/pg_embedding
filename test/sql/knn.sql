@@ -23,5 +23,14 @@ SELECT * FROM t ORDER BY val <-> array[3,3,3];
 SELECT * FROM t ORDER BY val <=> array[3,3,3];
 SELECT * FROM t ORDER BY val <~> array[3,3,3];
 
+delete from t;
+vacuum t;
+INSERT INTO t (val) VALUES ('{0,1,2}'), ('{1,2,3}'), ('{1,1,1}'), (NULL), (array[1,2,4]);
+SET enable_seqscan = off;
+SELECT * FROM t ORDER BY val <-> array[3,3,3];
+SELECT * FROM t ORDER BY val <=> array[3,3,3];
+SELECT * FROM t ORDER BY val <~> array[3,3,3];
+
+
 
 DROP TABLE t;
