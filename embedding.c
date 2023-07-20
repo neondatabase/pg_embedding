@@ -24,9 +24,20 @@ PG_MODULE_MAGIC;
 #define HNSW_STACK_SIZE 4
 #define FIRST_PAGE      0
 
+/* Label flags */
+#define DELETED_FLAG 1
+
 PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
 PGDLLEXPORT PG_FUNCTION_INFO_V1(cosine_distance);
 PGDLLEXPORT PG_FUNCTION_INFO_V1(manhattan_distance);
+
+typedef union {
+	label_t label;
+	struct {
+		ItemPointerData tid;
+		uint16			flags;
+	} pg;
+} HnswLabel;
 
 /*
  * Postgres specific part of HNSW index.
@@ -111,7 +122,7 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	HnswIndex* hnsw = (HnswIndex*) state;
 	ArrayType* array;
 	int n_items;
-	label_t label = 0;
+	HnswLabel u;
 
 	/* Skip nulls */
 	if (isnull[0])
@@ -125,9 +136,10 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 			 n_items, (int)hnsw->meta.dim);
 	}
 
-	memcpy(&label, tid, sizeof(*tid));
+	u.pg.tid = *tid;
+	u.pg.flags = 0;
 
-	if (!hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label))
+	if (!hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), u.label))
 		elog(ERROR, "HNSW index insert failed");
 	pfree(array);
 }
@@ -440,7 +452,7 @@ hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 	Datum value;
 	ArrayType* array;
 	int n_items;
-	label_t label = 0;
+	HnswLabel u;
 	HnswIndex* hnsw;
 	bool success;
 
@@ -459,8 +471,11 @@ hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 		elog(ERROR, "Wrong number of dimensions: %d instead of %d expected",
 			 n_items, (int)hnsw->meta.dim);
 	}
-	memcpy(&label, heap_tid, sizeof(*heap_tid));
-	success = hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label);
+
+	u.pg.tid = *heap_tid;
+	u.pg.flags = 0;
+
+	success = hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), u.label);
 	pfree(array);
 	pfree(hnsw);
 	return success;
@@ -583,6 +598,7 @@ bool hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** c
 	Page page;
 	Item item;
 	ItemId item_id;
+	OffsetNumber offset;
 	Buffer buf;
 
 	if (hnsw->n_buffers >= HNSW_STACK_SIZE)
@@ -607,13 +623,14 @@ bool hnsw_begin_read(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** c
 	if (blkno == FIRST_PAGE)
 		hnsw_check_meta(meta, page);
 
-	item_id = PageGetItemId(page, FirstOffsetNumber + idx % meta->elems_per_page);
-	if (!ItemIdHasStorage(item_id))
+	offset = FirstOffsetNumber + idx % meta->elems_per_page;
+    if (offset > PageGetMaxOffsetNumber(page))
 	{
 		if (buf != hnsw->lockbuf && buf != hnsw->writebuf)
 			UnlockReleaseBuffer(buf);
 		return false;
 	}
+	item_id = PageGetItemId(page, offset);
 	item = PageGetItem(page, item_id);
 
 	hnsw->buffers[hnsw->n_buffers++] = buf;
@@ -750,9 +767,69 @@ static IndexBulkDeleteResult *
 hnsw_bulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 				IndexBulkDeleteCallback callback, void *callback_state)
 {
-	if (stats == NULL)
-		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+	OffsetNumber maxoffno;
+	OffsetNumber offno;
+	Relation	index = info->index;
+	Buffer		buf;
+	Page		page;
+	int 		n_deleted;
+	GenericXLogState *state;
+	BlockNumber rel_size = RelationGetNumberOfBlocks(index);
+	BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
+	HnswIndex* hnsw = hnsw_get_index(index);
+
+	for (BlockNumber blkno = FIRST_PAGE; blkno < rel_size; blkno++)
+	{
+		buf = ReadBufferExtended(index, MAIN_FORKNUM, blkno, RBM_NORMAL, bas);
+
+		/*
+		 * ambulkdelete cannot delete entries from pages that are
+		 * pinned by other backends
+		 *
+		 * https://www.postgresql.org/docs/current/index-locking.html
+		 */
+		LockBufferForCleanup(buf);
+		state = GenericXLogStart(index);
+		page = GenericXLogRegisterBuffer(state, buf, 0);
+
+		maxoffno = PageGetMaxOffsetNumber(page);
+		n_deleted = 0;
+
+		for (offno = FirstOffsetNumber; offno <= maxoffno; offno = OffsetNumberNext(offno))
+		{
+			HnswLabel* label = (HnswLabel*)((char*)PageGetItem(page, PageGetItemId(page, offno)) + hnsw->meta.offset_label);
+			if (!(label->pg.flags & DELETED_FLAG))
+			{
+				if (callback(&label->pg.tid, callback_state))
+				{
+					label->pg.flags |= DELETED_FLAG;
+					stats->tuples_removed++;
+					n_deleted += 1;
+				}
+				else
+					stats->num_index_tuples++;
+			}
+		}
+		if (n_deleted > 0)
+		{
+			MarkBufferDirty(buf);
+			GenericXLogFinish(state);
+		}
+		else
+			GenericXLogAbort(state);
+
+		UnlockReleaseBuffer(buf);
+	}
+	pfree(hnsw);
+
 	return stats;
+}
+
+bool hnsw_is_deleted(label_t label)
+{
+	HnswLabel u;
+	u.label = label;
+	return (u.pg.flags & DELETED_FLAG) != 0;
 }
 
 /*
@@ -876,5 +953,4 @@ manhattan_distance(PG_FUNCTION_ARGS)
  	}
 
 	PG_RETURN_FLOAT4(manhattan_dist_impl(ax, bx, a_dim));
- }
-
+}

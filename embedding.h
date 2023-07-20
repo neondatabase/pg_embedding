@@ -27,6 +27,7 @@ typedef struct
 	dist_func_t dist_func;
 } HnswMetadata;
 
+extern bool hnsw_is_deleted(label_t label);
 
 extern bool hnsw_search(HnswMetadata* meta, const coord_t *point, size_t* n_results, label_t** results);
 extern bool hnsw_bind_point(HnswMetadata* meta, const coord_t *point, idx_t idx);

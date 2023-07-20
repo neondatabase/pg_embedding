@@ -209,7 +209,8 @@ std::priority_queue<std::pair<dist_t, label_t>> searchKnn(HnswMetadata* meta, co
 		std::pair<dist_t, idx_t> rez = topCandidates.top();
 		label_t label;
 		hnsw_begin_read(meta, rez.second, NULL, NULL, &label);
-		topResults.push(std::pair<dist_t, label_t>(rez.first, label));
+		if (!hnsw_is_deleted(label))
+			topResults.push(std::pair<dist_t, label_t>(rez.first, label));
 		topCandidates.pop();
 		hnsw_end_read(meta);
 	}
