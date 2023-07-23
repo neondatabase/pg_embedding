@@ -10,9 +10,9 @@ REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-extension=embedding
 
 # For auto-vectorization:
-# - GCC&clang needs -Ofast or -O3: https://gcc.gnu.org/projects/tree-ssa/vectorization.html
-PG_CFLAGS += -Ofast -mavx2
-PG_CXXFLAGS += -std=c++11
+# - GCC (needs -ftree-vectorize, -O3 or -Ofast) - https://gcc.gnu.org/projects/tree-ssa/vectorization.html
+PG_CFLAGS += -Ofast -march=native
+PG_CXXFLAGS += -Ofast -march=native -std=c++11
 PG_LDFLAGS += -lstdc++
 
 all: $(EXTENSION)--$(EXTVERSION).sql
@@ -23,4 +23,4 @@ include $(PGXS)
 
 dist:
 	mkdir -p dist
-	git archive --format zip --prefix=$(EXTENSION)-$(EXTVERSION)/ --output dist/$(EXTENSION)-$(EXTVERSION).zip master
+	git archive --format zip --prefix=$(EXTENSION)-$(EXTVERSION)/ --output dist/$(EXTENSION)-$(EXTVERSION).zip main
