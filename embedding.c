@@ -113,6 +113,7 @@ _PG_init(void)
 					  DEFAULT_EF_CONSTRUCT, 1, INT_MAX, AccessExclusiveLock);
 	add_int_reloption(hnsw_relopt_kind, "efsearch", "Number of inspected neighbors during index search",
 					  DEFAULT_EF_SEARCH, 1, INT_MAX, AccessExclusiveLock);
+	hnsw_init_dist_func();
 }
 
 static void
@@ -895,14 +896,10 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(amroutine);
 }
 
-/*
- * Get the L2 distance between vectors
- */
-Datum
-l2_distance(PG_FUNCTION_ARGS)
+
+static dist_t
+calc_distance(dist_func_t dist, ArrayType *a, ArrayType *b)
 {
-	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
-	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
 	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
 	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
 	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
@@ -915,7 +912,15 @@ l2_distance(PG_FUNCTION_ARGS)
 				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
 	}
 
-	PG_RETURN_FLOAT4(l2_dist_impl(ax, bx, a_dim));
+	return hnsw_dist_func(dist, ax, bx, a_dim);
+}
+
+Datum
+l2_distance(PG_FUNCTION_ARGS)
+{
+	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
+	PG_RETURN_FLOAT4(calc_distance(DIST_L2, a, b));
 }
 
 Datum
@@ -923,19 +928,7 @@ cosine_distance(PG_FUNCTION_ARGS)
 {
 	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
-	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
-	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
-	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
-	coord_t	   *bx = (coord_t*)ARR_DATA_PTR(b);
-
-	if (a_dim != b_dim)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
-	}
-
-	PG_RETURN_FLOAT4(cosine_dist_impl(ax, bx, a_dim));
+	PG_RETURN_FLOAT4(calc_distance(DIST_COSINE, a, b));
 }
 
 Datum
@@ -943,17 +936,5 @@ manhattan_distance(PG_FUNCTION_ARGS)
 {
 	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
-	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
-	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
-	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
-	coord_t	   *bx = (coord_t*)ARR_DATA_PTR(b);
-
-	if (a_dim != b_dim)
- 	{
-		ereport(ERROR,
-				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
- 	}
-
-	PG_RETURN_FLOAT4(manhattan_dist_impl(ax, bx, a_dim));
+	PG_RETURN_FLOAT4(calc_distance(DIST_MANHATTAN, a, b));
 }

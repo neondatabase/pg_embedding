@@ -13,6 +13,12 @@ extern "C" {
 #include "embedding.h"
 }
 
+inline dist_t
+calc_dist_func(HnswMetadata* meta, coord_t const* ax, coord_t const* bx)
+{
+	return hnsw_dist_func(meta->dist_func, ax, bx, meta->dim);
+}
+
 static std::priority_queue<std::pair<dist_t, idx_t>>
 searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 {
@@ -30,7 +36,7 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 	if (!hnsw_begin_read(meta, enterpoint_node, NULL, &p_coords, NULL))
 		return topResults;
 
-    dist_t dist = hnsw_dist_func(meta, point, p_coords);
+    dist_t dist = calc_dist_func(meta, point, p_coords);
 	hnsw_end_read(meta);
 
     topResults.emplace(dist, enterpoint_node);
@@ -60,7 +66,7 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 				visited[tnum >> 5] |= 1 << (tnum & 31);
 
 				hnsw_begin_read(meta, tnum, NULL, &p_coords, NULL);
-                dist = hnsw_dist_func(meta, point, p_coords);
+                dist = calc_dist_func(meta, point, p_coords);
 				hnsw_end_read(meta);
 
                 if (topResults.top().first > dist || topResults.size() < ef) {
@@ -105,7 +111,7 @@ void getNeighborsByHeuristic(HnswMetadata* meta, std::priority_queue<std::pair<d
 			coord_t *p_coords, *p_coords2;
 			hnsw_begin_read(meta, curen2.second, NULL, &p_coords2, NULL);
 			hnsw_begin_read(meta, curen.second, NULL, &p_coords, NULL);
-            dist_t curdist = hnsw_dist_func(meta, p_coords2, p_coords);
+            dist_t curdist = calc_dist_func(meta, p_coords2, p_coords);
 			hnsw_end_read(meta);
 			hnsw_end_read(meta);
             if (curdist < dist_to_query) {
@@ -163,7 +169,7 @@ void mutuallyConnectNewElement(HnswMetadata* meta, const coord_t *point, idx_t c
         } else {
             // finding the "weakest" element to replace it with the new one
 			hnsw_begin_read(meta, cur_c, NULL, &p_coord2, NULL);
-            dist_t d_max = hnsw_dist_func(meta, p_coord2, p_coord);
+            dist_t d_max = calc_dist_func(meta, p_coord2, p_coord);
 			hnsw_end_read(meta);
             // Heuristic:
             std::priority_queue<std::pair<dist_t, idx_t>> candidates;
@@ -172,7 +178,7 @@ void mutuallyConnectNewElement(HnswMetadata* meta, const coord_t *point, idx_t c
             for (size_t j = 0; j < sz_link_list_other; j++)
 			{
 				hnsw_begin_read(meta, p_indexes[1 + j], NULL, &p_coord2, NULL);
-				candidates.emplace(hnsw_dist_func(meta, p_coord2, p_coord), p_indexes[1 + j]);
+				candidates.emplace(calc_dist_func(meta, p_coord2, p_coord), p_indexes[1 + j]);
 				hnsw_end_read(meta);
 			}
             getNeighborsByHeuristic(meta, candidates, resMmax);
