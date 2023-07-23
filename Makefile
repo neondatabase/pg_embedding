@@ -11,8 +11,8 @@ REGRESS_OPTS = --inputdir=test --load-extension=embedding
 
 # For auto-vectorization:
 # - GCC (needs -ftree-vectorize OR -O3) - https://gcc.gnu.org/projects/tree-ssa/vectorization.html
-PG_CFLAGS += -Ofast -mavx2
-PG_CXXFLAGS += -Ofast -std=c++11
+PG_CFLAGS += -Ofast -march=native
+PG_CXXFLAGS += -Ofast -march=native -std=c++11
 PG_LDFLAGS += -lstdc++
 
 all: $(EXTENSION)--$(EXTVERSION).sql
