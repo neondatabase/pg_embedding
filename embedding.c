@@ -93,6 +93,7 @@ _PG_init(void)
 	add_int_reloption(hnsw_relopt_kind, "efsearch", "Number of inspected neighbors during index search",
 					  64, 1, INT_MAX, AccessExclusiveLock);
 	hnsw_indexes = hnsw_index_create(TopMemoryContext, INDEX_HASH_SIZE, NULL);
+	hnsw_init_dist_func();
 }
 
 static void
