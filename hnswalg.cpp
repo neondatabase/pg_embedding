@@ -227,7 +227,6 @@ dist_t fstdistfunc_scalar(const coord_t *x, const coord_t *y, size_t n)
 {
     dist_t 	distance = 0.0;
 
-    #pragma clang loop vectorize(enable)
     for (size_t i = 0; i < n; i++)
     {
         dist_t diff = x[i] - y[i];
@@ -244,9 +243,10 @@ __attribute__((target("avx2")))
 dist_t fstdistfunc_avx2(const coord_t *x, const coord_t *y, size_t n)
 {
     const size_t TmpResSz = sizeof(__m256) / sizeof(float);
-    float PORTABLE_ALIGN32 TmpRes[TmpResSz];
+    coord_t PORTABLE_ALIGN32 TmpRes[TmpResSz];
     size_t qty16 = n / 16;
-    const float *pEnd1 = x + (qty16 * 16);
+    const coord_t *pEnd1 = x + (qty16 * 16);
+    const coord_t *pEnd2 = x + n;
     __m256 diff, v1, v2;
     __m256 sum = _mm256_set1_ps(0);
 
@@ -266,16 +266,25 @@ dist_t fstdistfunc_avx2(const coord_t *x, const coord_t *y, size_t n)
         sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
     }
     _mm256_store_ps(TmpRes, sum);
-    float res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
-    return (res);
+    dist_t res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
+
+    // Handle case when dimensions is not aligned on 16.
+    while (x < pEnd2) {
+    {
+        dist_t diff = *x++ - *y++;
+        res += diff * diff;
+    }
+
+	return (res);
 }
 
 dist_t fstdistfunc_sse(const coord_t *x, const coord_t *y, size_t n)
 {
     const size_t TmpResSz = sizeof(__m128) / sizeof(float);
-    float PORTABLE_ALIGN32 TmpRes[TmpResSz];
+    coord_t PORTABLE_ALIGN32 TmpRes[TmpResSz];
     size_t qty16 = n / 16;
-    const float *pEnd1 = x + (qty16 * 16);
+    const coord_t *pEnd1 = x + (qty16 * 16);
+    const coord_t *pEnd2 = x + n;
 
     __m128 diff, v1, v2;
     __m128 sum = _mm_set1_ps(0);
@@ -310,7 +319,15 @@ dist_t fstdistfunc_sse(const coord_t *x, const coord_t *y, size_t n)
         sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
     }
     _mm_store_ps(TmpRes, sum);
-    float res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
+    dist_t res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
+
+	// Handle case when dimensions is not aligned on 16.
+    while (x < pEnd2) {
+    {
+        dist_t diff = *x++ - *y++;
+        res += diff * diff;
+    }
+
     return res;
 }
 #endif
