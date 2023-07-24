@@ -32,9 +32,7 @@ struct HierarchicalNSW
 	size_t size_links_level0;
 	size_t efConstruction;
 
-#ifdef __x86_64__
-	bool	use_avx2;
-#endif
+	dist_func_t dist_func;
 
 	char   data_level0_memory[0]; // varying size
 

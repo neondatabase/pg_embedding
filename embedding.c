@@ -17,7 +17,15 @@
 
 #include "embedding.h"
 
+#define HNSW_DISTANCE_PROC 1
+
 PG_MODULE_MAGIC;
+
+typedef dist_t (*dist_fptr_t)(coord_t const* ax, coord_t const* bx, size_t size);
+
+PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(cosine_distance);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(manhattan_distance);
 
 typedef struct {
 	int32 vl_len_;		/* varlena header (do not touch directly!) */
@@ -85,8 +93,8 @@ _PG_init(void)
 	add_int_reloption(hnsw_relopt_kind, "efsearch", "Number of inspected neighbors during index search",
 					  64, 1, INT_MAX, AccessExclusiveLock);
 	hnsw_indexes = hnsw_index_create(TopMemoryContext, INDEX_HASH_SIZE, NULL);
+	hnsw_init_dist_func();
 }
-
 
 static void
 hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
@@ -113,11 +121,26 @@ hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
 	hnsw_add_point(hnsw, (coord_t*)ARR_DATA_PTR(array), label);
 }
 
+static dist_func_t
+hnsw_resolve_dist_func(Relation index)
+{
+	FmgrInfo* proc_info = index_getprocinfo(index, 1, HNSW_DISTANCE_PROC);
+	if (proc_info->fn_addr == l2_distance)
+		return DIST_L2;
+	else if (proc_info->fn_addr == cosine_distance)
+		return DIST_COSINE;
+	else if (proc_info->fn_addr == manhattan_distance)
+		return DIST_MANHATTAN;
+	else
+		elog(ERROR, "Function is not supported by HNSW inodex");
+}
+
 static void
 hnsw_populate(HierarchicalNSW* hnsw, Relation indexRel, Relation heapRel)
 {
 	IndexInfo* indexInfo = BuildIndexInfo(indexRel);
 	Assert(indexInfo->ii_NumIndexAttrs == 1);
+	hnsw_set_dist_func(hnsw, hnsw_resolve_dist_func(indexRel));
 	table_index_build_scan(heapRel, indexRel, indexInfo,
 						   true, true, hnsw_build_callback, (void *) hnsw, NULL);
 }
@@ -219,9 +242,18 @@ hnsw_get_index(Relation indexRel, Relation heapRel, bool build)
 				exists = false;
 			}
 		}
-		Assert(mapped_size == shmem_size);
+		else if (mapped_size != shmem_size)
+		{
+			dsm_impl_op(DSM_OP_DESTROY, handle, 0, &impl_private,
+						&mapped_address, &mapped_size, DEBUG1);
+			if (!dsm_impl_op(DSM_OP_CREATE, handle, shmem_size, &impl_private,
+							 &mapped_address, &mapped_size, DEBUG1))
+			{
+				return NULL;
+			}
+			exists = false;
+		}
 		hnsw = (HierarchicalNSW*)mapped_address;
-
 		if (!exists)
 		{
 			hnsw_init(hnsw, dims, maxelements, M, maxM, opts->efConstruction);
@@ -520,7 +552,7 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
 	amroutine->amstrategies = 0;
-	amroutine->amsupport = 0;
+	amroutine->amsupport = 1;
 	amroutine->amoptsprocnum = 0;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
@@ -568,19 +600,12 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(amroutine);
 }
 
-/*
- * Get the L2 distance between vectors
- */
-PGDLLEXPORT PG_FUNCTION_INFO_V1(l2_distance);
-Datum
-l2_distance(PG_FUNCTION_ARGS)
+
+static dist_t
+calc_distance(dist_func_t dist, ArrayType *a, ArrayType *b)
 {
-	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
-	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
 	int         a_dim = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
 	int         b_dim = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
-	dist_t 		distance = 0.0;
-	dist_t		diff;
 	coord_t	   *ax = (coord_t*)ARR_DATA_PTR(a);
 	coord_t	   *bx = (coord_t*)ARR_DATA_PTR(b);
 
@@ -591,11 +616,29 @@ l2_distance(PG_FUNCTION_ARGS)
 				 errmsg("different array dimensions %d and %d", a_dim, b_dim)));
 	}
 
-	for (int i = 0; i < a_dim; i++)
-	{
-		diff = ax[i] - bx[i];
-		distance += diff * diff;
-	}
+	return hnsw_dist_func(dist, ax, bx, a_dim);
+}
 
-	PG_RETURN_FLOAT4((dist_t)sqrt(distance));
+Datum
+l2_distance(PG_FUNCTION_ARGS)
+{
+	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
+	PG_RETURN_FLOAT4(calc_distance(DIST_L2, a, b));
+}
+
+Datum
+cosine_distance(PG_FUNCTION_ARGS)
+{
+	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
+	PG_RETURN_FLOAT4(calc_distance(DIST_COSINE, a, b));
+}
+
+Datum
+manhattan_distance(PG_FUNCTION_ARGS)
+{
+	ArrayType  *a = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *b = PG_GETARG_ARRAYTYPE_P(1);
+	PG_RETURN_FLOAT4(calc_distance(DIST_MANHATTAN, a, b));
 }

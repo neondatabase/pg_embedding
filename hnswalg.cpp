@@ -25,9 +25,6 @@ HierarchicalNSW::HierarchicalNSW(size_t dim_, size_t maxelements_, size_t M_, si
 
     enterpoint_node = 0;
     cur_element_count = 0;
-#ifdef __x86_64__
-    use_avx2 = __builtin_cpu_supports("avx2");
-#endif
 }
 
 std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(const coord_t *point, size_t ef)
@@ -42,7 +39,7 @@ std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(c
 
     std::priority_queue<std::pair<dist_t, idx_t >> candidateSet;
 
-    dist_t dist = fstdistfunc(point, getDataByInternalId(enterpoint_node));
+    dist_t dist = hnsw_dist_func(dist_func, point, getDataByInternalId(enterpoint_node), dim);
 
     topResults.emplace(dist, enterpoint_node);
     candidateSet.emplace(-dist, enterpoint_node);
@@ -71,7 +68,7 @@ std::priority_queue<std::pair<dist_t, idx_t>> HierarchicalNSW::searchBaseLayer(c
             if (!(visited[tnum >> 5] & (1 << (tnum & 31)))) {
 				visited[tnum >> 5] |= 1 << (tnum & 31);
 
-                dist = fstdistfunc(point, getDataByInternalId(tnum));
+                dist = hnsw_dist_func(dist_func, point, getDataByInternalId(tnum), dim);
 
                 if (topResults.top().first > dist || topResults.size() < ef) {
                     candidateSet.emplace(-dist, tnum);
@@ -112,8 +109,10 @@ void HierarchicalNSW::getNeighborsByHeuristic(std::priority_queue<std::pair<dist
         resultSet.pop();
         bool good = true;
         for (std::pair<dist_t, idx_t> curen2 : returnlist) {
-            dist_t curdist = fstdistfunc(getDataByInternalId(curen2.second),
-                                         getDataByInternalId(curen.second));
+            dist_t curdist = hnsw_dist_func(dist_func,
+											getDataByInternalId(curen2.second),
+											getDataByInternalId(curen.second),
+											dim);
             if (curdist < dist_to_query) {
                 good = false;
                 break;
@@ -167,13 +166,20 @@ void HierarchicalNSW::mutuallyConnectNewElement(const coord_t *point, idx_t cur_
         } else {
             // finding the "weakest" element to replace it with the new one
             idx_t *data = ll_other + 1;
-            dist_t d_max = fstdistfunc(getDataByInternalId(cur_c), getDataByInternalId(res[idx]));
+            dist_t d_max = hnsw_dist_func(dist_func,
+										  getDataByInternalId(cur_c),
+										  getDataByInternalId(res[idx]),
+										  dim);
             // Heuristic:
             std::priority_queue<std::pair<dist_t, idx_t>> candidates;
             candidates.emplace(d_max, cur_c);
 
             for (size_t j = 0; j < sz_link_list_other; j++)
-                candidates.emplace(fstdistfunc(getDataByInternalId(data[j]), getDataByInternalId(res[idx])), data[j]);
+                candidates.emplace(hnsw_dist_func(dist_func,
+												  getDataByInternalId(data[j]),
+												  getDataByInternalId(res[idx]),
+												  dim),
+								   data[j]);
 
             getNeighborsByHeuristic(candidates, resMmax);
 
@@ -223,126 +229,6 @@ std::priority_queue<std::pair<dist_t, label_t>> HierarchicalNSW::searchKnn(const
     return topResults;
 };
 
-dist_t fstdistfunc_scalar(const coord_t *x, const coord_t *y, size_t n)
-{
-    dist_t 	distance = 0.0;
-
-    for (size_t i = 0; i < n; i++)
-    {
-        dist_t diff = x[i] - y[i];
-        distance += diff * diff;
-    }
-    return distance;
-
-}
-
-#ifdef __x86_64__
-#include <immintrin.h>
-
-__attribute__((target("avx2")))
-dist_t fstdistfunc_avx2(const coord_t *x, const coord_t *y, size_t n)
-{
-    const size_t TmpResSz = sizeof(__m256) / sizeof(float);
-    coord_t PORTABLE_ALIGN32 TmpRes[TmpResSz];
-    size_t qty16 = n / 16;
-    const coord_t *pEnd1 = x + (qty16 * 16);
-    const coord_t *pEnd2 = x + n;
-    __m256 diff, v1, v2;
-    __m256 sum = _mm256_set1_ps(0);
-
-    while (x < pEnd1) {
-        v1 = _mm256_loadu_ps(x);
-        x += 8;
-        v2 = _mm256_loadu_ps(y);
-        y += 8;
-        diff = _mm256_sub_ps(v1, v2);
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
-
-        v1 = _mm256_loadu_ps(x);
-        x += 8;
-        v2 = _mm256_loadu_ps(y);
-        y += 8;
-        diff = _mm256_sub_ps(v1, v2);
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(diff, diff));
-    }
-    _mm256_store_ps(TmpRes, sum);
-    dist_t res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
-
-    // Handle case when dimensions is not aligned on 16.
-    while (x < pEnd2) {
-    {
-        dist_t diff = *x++ - *y++;
-        res += diff * diff;
-    }
-
-	return (res);
-}
-
-dist_t fstdistfunc_sse(const coord_t *x, const coord_t *y, size_t n)
-{
-    const size_t TmpResSz = sizeof(__m128) / sizeof(float);
-    coord_t PORTABLE_ALIGN32 TmpRes[TmpResSz];
-    size_t qty16 = n / 16;
-    const coord_t *pEnd1 = x + (qty16 * 16);
-    const coord_t *pEnd2 = x + n;
-
-    __m128 diff, v1, v2;
-    __m128 sum = _mm_set1_ps(0);
-
-    while (x < pEnd1) {
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-
-        v1 = _mm_loadu_ps(x);
-        x += 4;
-        v2 = _mm_loadu_ps(y);
-        y += 4;
-        diff = _mm_sub_ps(v1, v2);
-        sum = _mm_add_ps(sum, _mm_mul_ps(diff, diff));
-    }
-    _mm_store_ps(TmpRes, sum);
-    dist_t res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
-
-	// Handle case when dimensions is not aligned on 16.
-    while (x < pEnd2) {
-    {
-        dist_t diff = *x++ - *y++;
-        res += diff * diff;
-    }
-
-    return res;
-}
-#endif
-
-dist_t HierarchicalNSW::fstdistfunc(const coord_t *x, const coord_t *y)
-{
-#ifndef __x86_64__
-    return fstdistfunc_scalar(x, y, dim);
-#else
-    if(use_avx2)
-        return fstdistfunc_avx2(x, y, dim);
-
-    return fstdistfunc_sse(x, y, dim);
-#endif
-}
 
 bool hnsw_search(HierarchicalNSW* hnsw, const coord_t *point, size_t efSearch, size_t* n_results, label_t** results)
 {
@@ -404,3 +290,9 @@ void hnsw_reset(HierarchicalNSW* hnsw)
 {
 	hnsw->cur_element_count = 0;
 }
+
+void hnsw_set_dist_func(HierarchicalNSW* hnsw, dist_func_t dist_func)
+{
+	hnsw->dist_func = dist_func;
+}
+
