@@ -102,7 +102,7 @@ static dist_t l2_dist_impl_sse(const coord_t *x, const coord_t *y, size_t n)
 
     return sqrtf(res);
 }
-#endif
+#else
 
 static dist_t l2_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 {
@@ -114,6 +114,7 @@ static dist_t l2_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 	}
 	return sqrtf(distance);
 }
+#endif
 
 static dist_t cosine_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 {
