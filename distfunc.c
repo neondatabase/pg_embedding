@@ -41,7 +41,7 @@ static dist_t l2_dist_impl_avx2(const coord_t *x, const coord_t *y, size_t n)
     res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
 
     // Handle case when dimensions is not aligned on 16.
-    while (x < pEnd2) {
+    while (x < pEnd2)
     {
         dist_t diff = *x++ - *y++;
         res += diff * diff;
@@ -94,7 +94,7 @@ static dist_t l2_dist_impl_sse(const coord_t *x, const coord_t *y, size_t n)
     res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];
 
 	// Handle case when dimensions is not aligned on 16.
-    while (x < pEnd2) {
+    while (x < pEnd2)
     {
         dist_t diff = *x++ - *y++;
         res += diff * diff;
