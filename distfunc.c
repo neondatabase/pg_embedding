@@ -33,6 +33,30 @@ static dist_t l2_dist_impl_avx2(const coord_t *x, const coord_t *y, size_t n)
         accum2 = _mm256_fmadd_ps(vecSub2, vecSub2, accum2);
     }
     accum1 = _mm256_add_ps(accum1, accum2);
+
+    // Do final full vector calculations, not unrolled
+    size_t tail = n - n % elts_per_loop;
+    // The tail within the tail; the last few elements that don't even need a 
+    // whole __m256
+    size_t subtail_size = n % elts_per_vector;
+    size_t subtail = n - subtail_size;
+    for(size_t i = tail; i < subtail; i += elts_per_vector)
+    {
+        __m256 vecX1 = _mm256_loadu_ps(x + tail + i);
+        __m256 vecY1 = _mm256_loadu_ps(y + tail + i);
+        __m256 vecSub1 = _mm256_sub_ps(vecX1, vecY1);
+        accum1 = _mm256_fmadd_ps(vecSub1, vecSub1, accum1);
+    }
+
+#if defined(__AVX512VL__)
+    // the final set of elements, less than elts_per_vector
+    __mmask8 mask = (1 << subtail_size) - 1;
+    __m256 x_rest = _mm256_maskz_loadu_ps(mask, x + subtail);
+    __m256 y_rest = _mm256_maskz_loadu_ps(mask, y + subtail);
+    __m256 sub_rest = _mm256_sub_ps(x_rest, y_rest);
+    accum1 = _mm256_fmadd_ps(sub_rest, sub_rest, accum1);
+#endif
+
     _mm256_storeu_ps(partial_result, accum1);
     float res1 = partial_result[0] + partial_result[4];
     float res2 = partial_result[1] + partial_result[5];
@@ -42,13 +66,14 @@ static dist_t l2_dist_impl_avx2(const coord_t *x, const coord_t *y, size_t n)
     res2 += res4;
     res1 += res2;
 
-    size_t tail_size = n % elts_per_loop;
-    size_t tail = n - tail_size;
-    for(int i = 0; i < tail_size; i++)
+#if !defined(__AVX512VL__)
+    for(size_t i = subtail; i < n; i++)
     {
-        float dist = x[tail + i] - y[tail + i];
+        float dist = x[i] - y[i];
         res1 += (dist * dist);
     }
+#endif
+
     return sqrtf(res1);
 }
 
