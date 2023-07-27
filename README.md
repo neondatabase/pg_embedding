@@ -5,6 +5,24 @@ The `pg_embedding` extension enables the use of the Hierarchical Navigable Small
 This extension is based on [ivf-hnsw](https://github.com/dbaranchuk/ivf-hnsw) implementation of HNSW
 the code for the current state-of-the-art billion-scale nearest neighbor search system<sup>[[1]](#references)</sup>.
 
+## Installation
+
+Install the extension with Docker. First, clone the repo:
+```
+git clone https://github.com/neondatabase/pg_embedding.git
+cd pg_embedding
+```
+
+Then, build the image:
+```
+docker build --build-arg PG_MAJOR=15 -t pg_embedding .
+```
+
+And, finally, run the Docker container:
+```
+docker run -d -e POSTGRES_PASSWORD=mysecretpassword pg_embedding
+```
+
 ## Using the pg_embedding extension
 
 This section describes how to use the `pg_embedding` extension in Neon with a simple example that demonstrates the required statements, syntax, and options.
