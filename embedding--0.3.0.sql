@@ -31,7 +31,7 @@ CREATE OPERATOR <~> (
 
 -- access method
 
-CREATE FUNCTION hnsw_handler(internal) RETURNS index_am_handler
+CREATE FUNCTION disk_hnsw_handler(internal) RETURNS index_am_handler
 	AS 'MODULE_PATHNAME' LANGUAGE C;
 
 CREATE ACCESS METHOD disk_hnsw TYPE INDEX HANDLER disk_hnsw_handler;
