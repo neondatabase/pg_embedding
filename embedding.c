@@ -848,9 +848,9 @@ bool hnsw_is_deleted(label_t label)
  *
  * See https://www.postgresql.org/docs/current/index-api.html
  */
-PGDLLEXPORT PG_FUNCTION_INFO_V1(hnsw_handler);
+PGDLLEXPORT PG_FUNCTION_INFO_V1(disk_hnsw_handler);
 Datum
-hnsw_handler(PG_FUNCTION_ARGS)
+disk_hnsw_handler(PG_FUNCTION_ARGS)
 {
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
