@@ -1,0 +1,42 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.ref_name == 'main' && github.sha || 'anysha' }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04, macos-13 ]
+        postgresql: [ 14, 15 ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@master
+
+      - name: brew install postgresql
+        run: |
+          brew install ${FORMULA}
+          brew services start ${FORMULA}
+
+          echo "PG_CONFIG=$(brew --prefix ${FORMULA})/bin/pg_config" >> $GITHUB_ENV
+        env:
+          FORMULA: postgresql@${{ matrix.postgresql }}
+
+      - uses: actions/checkout@v3
+
+      - run: make
+      - run: make install
+      - run: make installcheck
+
+      - if: failure()
+        run: cat regression.diffs
