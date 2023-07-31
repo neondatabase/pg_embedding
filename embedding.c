@@ -733,6 +733,13 @@ void hnsw_end_write(HnswMetadata* meta)
 	}
 }
 
+void hnsw_prefetch(HnswMetadata* meta, idx_t idx)
+{
+	HnswIndex* hnsw = (HnswIndex*)meta;
+	BlockNumber blkno = idx/meta->elems_per_page;
+	PrefetchBuffer(hnsw->rel, MAIN_FORKNUM, blkno);
+}
+
 
 /*
  * Build the index for an unlogged table

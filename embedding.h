@@ -36,5 +36,7 @@ extern void hnsw_end_read(HnswMetadata* meta);
 extern void hnsw_begin_write(HnswMetadata* meta, idx_t idx, idx_t** indexes, coord_t** coords, label_t* label);
 extern void hnsw_end_write(HnswMetadata* meta);
 
+extern void hnsw_prefetch(HnswMetadata* meta, idx_t idx);
+
 extern dist_t hnsw_dist_func(dist_func_t dist, coord_t const* ax, coord_t const* bx, size_t dim);
 extern void   hnsw_init_dist_func(void);

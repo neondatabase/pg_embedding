@@ -63,6 +63,13 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 				visited.resize((tnum >> 5) + 1);
 
             if (!(visited[tnum >> 5] & (1 << (tnum & 31)))) {
+				hnsw_prefetch(meta, tnum);
+			}
+		}
+        for (size_t j = 0; j < size; ++j) {
+            size_t tnum = p_indexes[1 + j];
+
+            if (!(visited[tnum >> 5] & (1 << (tnum & 31)))) {
 				visited[tnum >> 5] |= 1 << (tnum & 31);
 
 				hnsw_begin_read(meta, tnum, NULL, &p_coords, NULL);
