@@ -338,7 +338,7 @@ hnsw_costestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	else
 	{
 		IndexOptInfo *index = path->indexinfo;
-		Relation      rel = index_open(index->rel->relid, NoLock);
+		Relation      rel = index_open(index->indexoid, NoLock);
 		HnswIndex*    hnsw = hnsw_get_index(rel);
 		double		  spc_random_page_cost;
 
