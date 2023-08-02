@@ -1,4 +1,4 @@
 comment = 'hnsw index'
-default_version = '0.3.1'
+default_version = '0.3.5'
 module_pathname = '$libdir/embedding'
 relocatable = true
