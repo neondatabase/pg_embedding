@@ -8,10 +8,12 @@
 #include "catalog/index.h"
 #include "commands/vacuum.h"
 #include "nodes/execnodes.h"
+#include "nodes/pathnodes.h"
 #include "storage/bufmgr.h"
 #include "storage/smgr.h"
 #include "utils/guc.h"
 #include "utils/selfuncs.h"
+#include "utils/spccache.h"
 
 #include <math.h>
 #include <float.h>
@@ -333,17 +335,30 @@ hnsw_costestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		*indexPages = 0;
 		return;
 	}
+	else
+	{
+		IndexOptInfo *index = path->indexinfo;
+		Relation      rel = index_open(index->rel->relid, NoLock);
+		HnswIndex*    hnsw = hnsw_get_index(rel);
+		double		  spc_random_page_cost;
 
-	MemSet(&costs, 0, sizeof(costs));
+		get_tablespace_page_costs(index->reltablespace,
+								  &spc_random_page_cost,
+								  NULL);
 
-	genericcostestimate(root, path, loop_count, &costs);
+		MemSet(&costs, 0, sizeof(costs));
 
-	/* Startup cost and total cost are same */
-	*indexStartupCost = costs.indexTotalCost;
-	*indexTotalCost = costs.indexTotalCost;
-	*indexSelectivity = costs.indexSelectivity;
-	*indexCorrelation = costs.indexCorrelation;
-	*indexPages = costs.numIndexPages;
+		genericcostestimate(root, path, loop_count, &costs);
+
+		/* Number of pages inspected by search is limited by efSearch parameter */
+		*indexStartupCost = *indexTotalCost = hnsw->meta.efSearch * spc_random_page_cost;
+		*indexSelectivity = costs.indexSelectivity;
+		*indexCorrelation = costs.indexCorrelation;
+		*indexPages = costs.numIndexPages;
+
+		pfree(hnsw);
+		index_close(rel, NoLock);
+	}
 }
 
 /*
