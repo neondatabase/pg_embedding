@@ -352,9 +352,9 @@ hnsw_costestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 
 		/* Number of pages inspected by search is limited by efSearch parameter */
 		*indexStartupCost = *indexTotalCost = hnsw->meta.efSearch * spc_random_page_cost;
-		*indexSelectivity = costs.indexSelectivity;
+		*indexSelectivity = index->rel->rows ? hnsw->meta.efSearch / index->rel->rows : costs.indexSelectivity;
 		*indexCorrelation = costs.indexCorrelation;
-		*indexPages = costs.numIndexPages;
+		*indexPages = hnsw->meta.efSearch;
 
 		pfree(hnsw);
 		index_close(rel, NoLock);
