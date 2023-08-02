@@ -465,7 +465,6 @@ hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 			bool indexUnchanged,
 			IndexInfo *indexInfo)
 {
-	Datum value;
 	ArrayType* array;
 	int n_items;
 	HnswLabel u;
@@ -479,8 +478,7 @@ hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 	hnsw = hnsw_get_index(index);
 
 	/* Detoast value */
-	value = PointerGetDatum(PG_DETOAST_DATUM(values[0]));
-	array = DatumGetArrayTypeP(value);
+	array = DatumGetArrayTypePCopy(values[0]);
 	n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
 	if (n_items != hnsw->meta.dim)
 	{
