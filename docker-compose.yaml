@@ -3,7 +3,10 @@ version: '3.1'
 services:
   pg-embedding:
     container_name: Postgres-Embedding
-    build: docker
+    build: 
+      context: docker
+      args:
+        PG_MAJOR_VER: 15
     restart: on-failure
     ports:
       - 5432:5432
