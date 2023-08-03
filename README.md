@@ -84,7 +84,7 @@ To optimize search behavior, you can add an HNSW index. To create the HNSW index
 Euclidean (L2) distance index:
 
 ```sql
-CREATE INDEX ON documents USING disk_hnsw(embedding) WITH (dims=3, m=3);
+CREATE INDEX ON documents USING hnsw(embedding) WITH (dims=3, m=3);
 SET enable_seqscan = off;
 SELECT id FROM documents ORDER BY embedding <-> array[3,3,3] LIMIT 1;
 ```
@@ -92,7 +92,7 @@ SELECT id FROM documents ORDER BY embedding <-> array[3,3,3] LIMIT 1;
 Cosine distance index:
 
 ```sql
-CREATE INDEX ON documents USING disk_hnsw(embedding ann_cos_ops) WITH (dims=3, m=3);
+CREATE INDEX ON documents USING hnsw(embedding ann_cos_ops) WITH (dims=3, m=3);
 SET enable_seqscan = off;
 SELECT id FROM documents ORDER BY embedding <=> array[3,3,3] LIMIT 1;
 ```
@@ -100,7 +100,7 @@ SELECT id FROM documents ORDER BY embedding <=> array[3,3,3] LIMIT 1;
 Manhattan distance index:
 
 ```sql
-CREATE INDEX ON documents USING disk_hnsw(embedding ann_manhattan_ops) WITH (dims=3, m=3);
+CREATE INDEX ON documents USING hnsw(embedding ann_manhattan_ops) WITH (dims=3, m=3);
 SET enable_seqscan = off;
 SELECT id FROM documents ORDER BY embedding <~> array[3,3,3] LIMIT 1;
 ```
