@@ -1,0 +1,8 @@
+pg_embedding
+Copyright 2023 Neon Inc.
+
+This product includes software developed at
+Neon Inc. (https://www.neon.tech/).
+
+HNSW Algorithm implementation (hnswalg.cpp and hnswalg.h) is derived from https://github.com/dbaranchuk/ivf-hnsw,
+which is licensed under the MIT License: https://github.com/dbaranchuk/ivf-hnsw/blob/master/LICENSE
