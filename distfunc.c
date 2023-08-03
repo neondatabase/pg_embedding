@@ -352,16 +352,6 @@ static dist_t l2_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 	return sqrtf(distance);
 }
 
-static dist_t manhattan_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
-{
-	dist_t 		distance = 0.0;
-	for (size_t i = 0; i < dim; i++)
-	{
-		distance += fabs(ax[i] - bx[i]);
-	}
-	return distance;
-}
-
 static dist_t cosine_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 {
 	dist_t 		distance = 0.0;
@@ -375,6 +365,17 @@ static dist_t cosine_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
 	}
 	return 1 - (distance / sqrt(norma * normb));
 }
+
+static dist_t manhattan_dist_impl(coord_t const* ax, coord_t const* bx, size_t dim)
+{
+	dist_t 		distance = 0.0;
+	for (size_t i = 0; i < dim; i++)
+	{
+		distance += fabs(ax[i] - bx[i]);
+	}
+	return distance;
+}
+
 #endif
 
 static dist_t (*dist_func_table[3])(coord_t const* ax, coord_t const* bx, size_t size);
