@@ -7,7 +7,9 @@ the code for the current state-of-the-art billion-scale nearest neighbor search 
 
 ## Using the pg_embedding extension
 
-This section describes how to use the `pg_embedding` extension in Neon with a simple example demonstrating the required statements, syntax, and options.
+This section describes how to use the `pg_embedding` extension with a simple example demonstrating the required statements, syntax, and options.
+
+For information about migrating from `pgvector` to `pg_embedding`, see [Migrate from pgvector to pg_embedding](https://neon.tech/docs/extensions/pg_embedding#migrate-from-pgvector-to-pgembedding), in the _Neon documentation_.
 
 ### Usage summary
 
