@@ -462,7 +462,9 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 static bool
 hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 			Relation heap, IndexUniqueCheck checkUnique,
+#if PG_VERSION_NUM >= 140000
 			bool indexUnchanged,
+#endif
 			IndexInfo *indexInfo)
 {
 	ArrayType* array;
@@ -899,7 +901,9 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	amroutine->amproperty = NULL;	/* TODO AMPROP_DISTANCE_ORDERABLE */
 	amroutine->ambuildphasename = NULL;
 	amroutine->amvalidate = hnsw_validate;
+#if PG_VERSION_NUM >= 140000
 	amroutine->amadjustmembers = NULL;
+#endif
 	amroutine->ambeginscan = hnsw_beginscan;
 	amroutine->amrescan = hnsw_rescan;
 	amroutine->amgettuple = hnsw_gettuple;
