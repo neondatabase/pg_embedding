@@ -15,8 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-22.04, macos-13 ]
-        postgresql: [ 14, 15 ]
+        os: [ ubuntu-22.04 ]
+        postgresql: [ 12, 13, 14, 15 ]
+        include:
+          - os: macos-13
+            postgresql: 15
 
     runs-on: ${{ matrix.os }}
 
