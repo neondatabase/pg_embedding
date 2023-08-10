@@ -3,7 +3,7 @@ EXTVERSION = 0.3.5
 
 MODULE_big = embedding
 DATA = $(wildcard *--*.sql)
-OBJS = embedding.o hnswalg.o distfunc.o
+OBJS = embedding.o hnswalg.o distfunc.o clustering.o
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
