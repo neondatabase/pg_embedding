@@ -1,0 +1,12 @@
+# `make` artifacts
+*.so
+*.o
+*.dylib
+
+# `make installcheck` artifacts
+results/
+regression.diffs
+regression.out
+
+# `make dist` artifacts
+dist/
