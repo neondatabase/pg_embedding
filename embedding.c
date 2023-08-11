@@ -106,9 +106,9 @@ typedef struct {
 static relopt_kind hnsw_relopt_kind;
 
 typedef struct {
-	HnswIndex* hnsw;
-	size_t curr;
-	size_t n_results;
+	HnswIndex*  hnsw;
+	size_t      curr;
+	size_t      n_results;
 	ItemPointer results;
 } HnswScanOpaqueData;
 
@@ -122,11 +122,24 @@ typedef struct {
 } PQSlice;
 
 typedef struct {
-	Oid   index_oid;
-	float centroids[FLEXIBLE_ARRAY_MEMBER];
+	Oid      index_oid;
+	uint32 	 status;
+	coord_t* centroids;
 } ProductQuantizerHashEntry;
 
-static HTAB* pq_hash;
+#define SH_PREFIX			pqh
+#define SH_ELEMENT_TYPE		ProductQuantizerHashEntry
+#define SH_KEY_TYPE			Oid
+#define SH_KEY				index_oid
+#define SH_HASH_KEY(tb, key) (key)
+#define SH_EQUAL(tb, a, b)  ((a) == (b))
+#define SH_SCOPE			static inline
+#define SH_DEFINE
+#define SH_DECLARE
+#include "lib/simplehash.h"
+
+static pqh_hash* pq_hash;
+static MemoryContext pq_memctx;
 
 #define DEFAULT_EF_CONSTRUCT 16
 #define DEFAULT_EF_SEARCH    64
@@ -242,7 +255,7 @@ hnsw_get_index(Relation indexRel)
 
 	hnsw->meta.dim = opts->dims;
 	hnsw->meta.M = opts->M;
-	hnsw->meta.maxM = hnsw->meta.M * 2;
+	hnsw->meta.maxM = hnsw->meta.M;
 	hnsw->meta.pqBits = opts->pqBits;
 	hnsw->meta.pqSubqs = opts->pqSubqs;
 	if (hnsw->meta.pqSubqs == 0) /* Product quantizer is disabled */
@@ -254,7 +267,7 @@ hnsw_get_index(Relation indexRel)
 	{
 		hnsw->meta.data_size = (opts->pqSubqs * opts->pqBits + 7) / 8;
 		hnsw->meta.pqSubdim = hnsw->meta.dim / opts->pqSubqs;
-		hnsw->first_page = (hnsw->meta.dim * (1ul << opts->pqBits) * sizeof(coord_t) + PQ_PAGE_SIZE - 1) / PQ_PAGE_SIZE;
+		hnsw->first_page = (opts->dims * (1ul << opts->pqBits) * sizeof(coord_t) + PQ_PAGE_SIZE - 1) / PQ_PAGE_SIZE;
 	}
 	hnsw->meta.offset_data = (hnsw->meta.maxM + 1) * sizeof(idx_t);
 	hnsw->meta.offset_label = hnsw->meta.offset_data + hnsw->meta.data_size;
@@ -549,7 +562,6 @@ static coord_t*
 pq_get_centroids(HnswIndex* hnsw, bool* found)
 {
 	ProductQuantizerHashEntry* entry;
-
 	if (hnsw->centroids != NULL)
 	{
 		*found = true;
@@ -557,14 +569,17 @@ pq_get_centroids(HnswIndex* hnsw, bool* found)
 	}
 	if (pq_hash == NULL)
 	{
-		HASHCTL	ctl;
-		size_t sizeof_centroids = hnsw->meta.dim * (1ul << hnsw->meta.pqBits) * sizeof(coord_t);
-		MemSet(&ctl, 0, sizeof(ctl));
-		ctl.keysize = sizeof(Oid);
-		ctl.entrysize = sizeof(ProductQuantizerHashEntry) + sizeof_centroids;
-		pq_hash = hash_create("pq_centroids", HNSW_MAX_INDEXES, &ctl, HASH_ELEM|HASH_BLOBS);
+		pq_memctx = AllocSetContextCreate(TopMemoryContext,
+										  "Product Quantizer centroids hash",
+										  ALLOCSET_DEFAULT_SIZES);
+		pq_hash = pqh_create(pq_memctx, HNSW_MAX_INDEXES, NULL);
 	}
-	entry = (ProductQuantizerHashEntry*)hash_search(pq_hash, &RelationGetRelid(hnsw->rel), HASH_ENTER, found);
+	entry = pqh_insert(pq_hash, RelationGetRelid(hnsw->rel), found);
+	if (!*found)
+	{
+		size_t sizeof_centroids = hnsw->meta.dim * (1ul << hnsw->meta.pqBits) * sizeof(coord_t);
+		entry->centroids = (coord_t*)MemoryContextAlloc(pq_memctx, sizeof_centroids);
+	}
 	return hnsw->centroids = entry->centroids;
 }
 
