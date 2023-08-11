@@ -4,6 +4,7 @@
 #include <cstring>
 #include <memory>
 #include <random>
+#include <assert.h>
 
 extern "C" {
 #include "embedding.h"
@@ -260,7 +261,7 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	best_centroids.resize(sizeof_centroids/sizeof(coord_t));
 
     // temporary buffer to decode vectors during the optimization
-    for (int redo = 0; redo < nredo; redo++) {
+    for (size_tredo = 0; redo < nredo; redo++) {
         // initialize (remaining) centroids with random points from the dataset
         std::vector<int> perm(nx);
 
