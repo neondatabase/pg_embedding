@@ -1,3 +1,17 @@
+// Copyright 2023 Neon Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "postgres.h"
 
 #include "access/amapi.h"
@@ -123,6 +137,12 @@ static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label)
 
 PGDLLEXPORT void _PG_init(void);
 
+#if PG_VERSION_NUM >= 130000
+#define OPTION_ACCESS_MODE , AccessExclusiveLock
+#else
+#define OPTION_ACCESS_MODE
+#endif
+
 /*
  * Initialize index options and variables
  */
@@ -131,28 +151,37 @@ _PG_init(void)
 {
 	hnsw_relopt_kind = add_reloption_kind();
 	add_int_reloption(hnsw_relopt_kind, "dims", "Number of dimensions",
-					  0, 0, MAX_DIM, AccessExclusiveLock);
+					  0, 0, MAX_DIM OPTION_ACCESS_MODE);
 	add_int_reloption(hnsw_relopt_kind, "m", "Number of neighbors of each vertex",
-					  DEFAULT_M, 0, INT_MAX, AccessExclusiveLock);
+					  DEFAULT_M, 0, INT_MAX OPTION_ACCESS_MODE);
 	add_int_reloption(hnsw_relopt_kind, "efconstruction", "Number of inspected neighbors during index construction",
-					  DEFAULT_EF_CONSTRUCT, 1, INT_MAX, AccessExclusiveLock);
+					  DEFAULT_EF_CONSTRUCT, 1, INT_MAX OPTION_ACCESS_MODE);
 	add_int_reloption(hnsw_relopt_kind, "efsearch", "Number of inspected neighbors during index search",
-					  DEFAULT_EF_SEARCH, 1, INT_MAX, AccessExclusiveLock);
+					  DEFAULT_EF_SEARCH, 1, INT_MAX OPTION_ACCESS_MODE);
 	add_int_reloption(hnsw_relopt_kind, "pqbits", "Product quantizer: number of bits per quantization index",
-					  0, 0, 32, AccessExclusiveLock);
+					  0, 0, 32 OPTION_ACCESS_MODE);
 	add_int_reloption(hnsw_relopt_kind, "pqsubqs", "Product quantizer: number of subquantizers",
-					  0, 0, 1024, AccessExclusiveLock);
+					  0, 0, 1024 OPTION_ACCESS_MODE);
 	hnsw_init_dist_func();
 }
 
 static void
-hnsw_build_callback(Relation index, ItemPointer tid, Datum *values,
-					bool *isnull, bool tupleIsAlive, void *state)
+hnsw_build_callback(Relation index,
+#if PG_VERSION_NUM >= 130000
+					ItemPointer tid,
+#else
+					HeapTuple hup,
+#endif
+					Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
 	HnswIndex* hnsw = (HnswIndex*) state;
 	ArrayType* array;
 	int n_items;
 	HnswLabel u;
+
+#if PG_VERSION_NUM < 130000
+	ItemPointer tid = &hup->t_self;
+#endif
 
 	/* Skip nulls */
 	if (isnull[0])
@@ -424,10 +453,24 @@ hnsw_options(Datum reloptions, bool validate)
 		{"m", RELOPT_TYPE_INT, offsetof(HnswOptions, M)}
 	};
 
+#if PG_VERSION_NUM >= 130000
 	return (bytea *) build_reloptions(reloptions, validate,
 									  hnsw_relopt_kind,
 									  sizeof(HnswOptions),
 									  tab, lengthof(tab));
+#else
+	relopt_value *options;
+	HnswOptions *rdopts;
+	int			numoptions;
+
+	options = parseRelOptions(reloptions, validate, hnsw_relopt_kind, &numoptions);
+
+	rdopts = allocateReloptStruct(sizeof(HnswOptions), options, numoptions);
+
+	fillRelOptions((void *) rdopts, sizeof(HnswOptions), options, numoptions, validate, tab, lengthof(tab));
+
+	return (bytea *) rdopts;
+#endif
 }
 
 /*
@@ -462,8 +505,13 @@ static void hnsw_init_first_page(HnswIndex* hnsw, ForkNumber forknum)
 }
 
 static void
-pq_count_callback(Relation index, ItemPointer tid, Datum *values,
-				  bool *isnull, bool tupleIsAlive, void *state)
+pq_count_callback(Relation index,
+#if PG_VERSION_NUM >= 130000
+				  ItemPointer tid,
+#else
+				  HeapTuple hup,
+#endif
+				  Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
 	/* Skip nulls */
 	if (isnull[0])
@@ -473,8 +521,13 @@ pq_count_callback(Relation index, ItemPointer tid, Datum *values,
 }
 
 static void
-pq_slice_callback(Relation index, ItemPointer tid, Datum *values,
-					bool *isnull, bool tupleIsAlive, void *state)
+pq_slice_callback(Relation index,
+#if PG_VERSION_NUM >= 130000
+				  ItemPointer tid,
+#else
+				  HeapTuple hup,
+#endif
+				  Datum *values, bool *isnull, bool tupleIsAlive, void *state)
 {
 	PQSlice* slice = (PQSlice*) state;
 	ArrayType* array;
@@ -648,7 +701,9 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 static bool
 hnsw_insert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 			Relation heap, IndexUniqueCheck checkUnique,
+#if PG_VERSION_NUM >= 140000
 			bool indexUnchanged,
+#endif
 			IndexInfo *indexInfo)
 {
 	ArrayType* array;
@@ -1160,7 +1215,9 @@ hnsw_handler(PG_FUNCTION_ARGS)
 
 	amroutine->amstrategies = 0;
 	amroutine->amsupport = 1;
+#if PG_VERSION_NUM >= 130000
 	amroutine->amoptsprocnum = 0;
+#endif
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
 	amroutine->amcanbackward = false;	/* can change direction mid-scan */
@@ -1174,8 +1231,10 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	amroutine->ampredlocks = false;
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+#if PG_VERSION_NUM >= 130000
 	amroutine->amusemaintenanceworkmem = false; /* not used during VACUUM */
 	amroutine->amparallelvacuumoptions = VACUUM_OPTION_PARALLEL_BULKDEL;
+#endif
 	amroutine->amkeytype = InvalidOid;
 
 	/* Interface functions */
@@ -1190,7 +1249,9 @@ hnsw_handler(PG_FUNCTION_ARGS)
 	amroutine->amproperty = NULL;	/* TODO AMPROP_DISTANCE_ORDERABLE */
 	amroutine->ambuildphasename = NULL;
 	amroutine->amvalidate = hnsw_validate;
+#if PG_VERSION_NUM >= 140000
 	amroutine->amadjustmembers = NULL;
+#endif
 	amroutine->ambeginscan = hnsw_beginscan;
 	amroutine->amrescan = hnsw_rescan;
 	amroutine->amgettuple = hnsw_gettuple;
