@@ -1,6 +1,8 @@
 #include <vector>
 #include <cinttypes>
 #include <cmath>
+#include <cstring>
+#include <memory>
 #include <random>
 
 extern "C" {
@@ -264,19 +266,19 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 
         rand_perm(perm.data(), nx, seed + 1 + redo * 15486557L);
 
-		for (int i = 0; i < k; i++) {
+		for (size_t i = 0; i < k; i++) {
 			memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
 		}
 
         // k-means iterations
 
         coord_t obj = 0;
-        for (int i = 0; i < niter; i++) {
+        for (size_t i = 0; i < niter; i++) {
 			calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
 
             // accumulate objective
             obj = 0;
-            for (int j = 0; j < nx; j++) {
+            for (size_t j = 0; j < nx; j++) {
                 obj += dis[j];
             }
 
