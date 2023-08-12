@@ -13,7 +13,7 @@ REGRESS_OPTS = --inputdir=test --load-extension=embedding
 # - GCC&clang needs -Ofast or -O3: https://gcc.gnu.org/projects/tree-ssa/vectorization.html
 PG_CFLAGS += -Ofast
 PG_CXXFLAGS += -DUSE_OMP -fopenmp  -std=c++11
-PG_LDFLAGS += -lstdc++
+PG_LDFLAGS += -lstdc++ -fopenmp  
 
 all: $(EXTENSION)--$(EXTVERSION).sql
 
