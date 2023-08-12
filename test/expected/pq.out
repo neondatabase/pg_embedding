@@ -61,7 +61,7 @@ SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
 select pg_relation_size('hnsw_pq_idx');
  pg_relation_size 
 ------------------
-           860160
+           540672
 (1 row)
 
 drop index hnsw_pq_idx;
@@ -84,7 +84,7 @@ SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
 select pg_relation_size('hnsw_idx');
  pg_relation_size 
 ------------------
-          1015808
+           688128
 (1 row)
 
 DROP TABLE t;
