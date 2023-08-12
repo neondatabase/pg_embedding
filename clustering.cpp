@@ -6,6 +6,10 @@
 #include <random>
 #include <assert.h>
 
+#ifdef USE_OMP
+#include <omp.h>
+#endif
+
 extern "C" {
 #include "embedding.h"
 }
@@ -102,27 +106,46 @@ void compute_centroids(
 
     memset(centroids, 0, sizeof(coord_t) * d * k);
 
-	for (size_t i = 0; i < n; i++) {
-		idx_t ci = assign[i];
-		assert(ci < k + k_frozen);
-		ci -= k_frozen;
-		coord_t* c = centroids + ci * d;
-		const coord_t* xi = &x[i * d];
-		if (weights) {
-			dist_t w = weights[i];
-			hassign[ci] += w;
-			for (size_t j = 0; j < d; j++) {
-				c[j] += xi[j] * w;
-			}
-		} else {
-			hassign[ci] += 1.0;
-			for (size_t j = 0; j < d; j++) {
-				c[j] += xi[j];
+#ifdef USE_OMP
+#pragma omp parallel
+    {
+        int nt = omp_get_num_threads();
+        int rank = omp_get_thread_num();
+
+        // this thread is taking care of centroids c0:c1
+        size_t c0 = (k * rank) / nt;
+        size_t c1 = (k * (rank + 1)) / nt;
+#else
+    {
+#endif
+		for (size_t i = 0; i < n; i++) {
+			idx_t ci = assign[i];
+			assert(ci < k + k_frozen);
+			ci -= k_frozen;
+#ifdef USE_OMP
+			if (ci > c0 || ci >= c1)
+				continue;
+#endif
+			coord_t* c = centroids + ci * d;
+			const coord_t* xi = &x[i * d];
+			if (weights) {
+				dist_t w = weights[i];
+				hassign[ci] += w;
+				for (size_t j = 0; j < d; j++) {
+					c[j] += xi[j] * w;
+				}
+			} else {
+				hassign[ci] += 1.0;
+				for (size_t j = 0; j < d; j++) {
+					c[j] += xi[j];
+				}
 			}
 		}
 	}
-
-    for (size_t ci = 0; ci < k; ci++) {
+#ifdef USE_OMP
+#pragma omp parallel for
+#endif
+	for (size_t ci = 0; ci < k; ci++) {
         if (hassign[ci] == 0) {
             continue;
         }
@@ -203,6 +226,10 @@ calculate_distances(HnswMetadata* meta, coord_t const* centroids, size_t nx, coo
 {
     size_t d = meta->pqSubdim; ///< dimension of the vectors
     idx_t k = 1 << meta->pqBits; ///< nb of centroids
+
+#ifdef USE_OMP
+#pragma omp parallel for
+#endif
 	for (size_t i = 0; i < nx; i++) {
 		const coord_t* x_i = x + i * d;
 		const coord_t* y_j = centroids;
