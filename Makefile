@@ -12,8 +12,14 @@ REGRESS_OPTS = --inputdir=test --load-extension=embedding
 # For auto-vectorization:
 # - GCC&clang needs -Ofast or -O3: https://gcc.gnu.org/projects/tree-ssa/vectorization.html
 PG_CFLAGS += -Ofast
-PG_CXXFLAGS += -DUSE_OMP -fopenmp  -std=c++11
-PG_LDFLAGS += -lstdc++ -fopenmp  
+ifeq ($(shell uname -s), Darwin)
+    PG_CXXFLAGS += -DUSE_OMP -I/usr/local/include -Xclang -fopenmp  -std=c++11
+    PG_LDFLAGS += -L/usr/local/lib -lomp -lstdc++
+else
+    PG_CXXFLAGS += -DUSE_OMP -fopenmp -std=c++11
+    PG_LDFLAGS += -lstdc++ -fopenmp
+endif
+
 
 all: $(EXTENSION)--$(EXTVERSION).sql
 
