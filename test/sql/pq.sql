@@ -5,18 +5,18 @@ CREATE INDEX hnsw_pq_idx ON t USING hnsw (val) WITH (dims=4, m=8, efConstruction
 CREATE INDEX ON t USING hnsw (val) WITH (dims=4, m=8, efConstruction=16, efSearch=10);
 
 SET enable_seqscan = off;
-explain SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
-SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
+explain SELECT * FROM t ORDER BY val <-> array[0.5,0.5,0.5,0.5] limit 10;
+SELECT * FROM t ORDER BY val <-> array[0.5,0.5,0.5,0.5] limit 10;
 
 SET enable_seqscan = on;
 SET enable_indexscan = off;
-explain SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
-SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
+explain SELECT * FROM t ORDER BY val <-> array[0.5,0.5,0.5,0.5] limit 10;
+SELECT * FROM t ORDER BY val <-> array[0.5,0.5,0.5,0.5] limit 10;
 select pg_relation_size('hnsw_pq_idx');
 
 drop index hnsw_pq_idx;
 CREATE INDEX hnsw_idx ON t USING hnsw (val) WITH (dims=4, m=8, efConstruction=16, efSearch=10);
-SELECT *,val <-> array[0.5,0.5,0.5,0.5] as dist FROM t ORDER BY dist limit 10;
+SELECT * FROM t ORDER BY val <-> array[0.5,0.5,0.5,0.5] limit 10;
 select pg_relation_size('hnsw_idx');
 
 DROP TABLE t;
