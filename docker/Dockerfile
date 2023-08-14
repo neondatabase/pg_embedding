@@ -5,13 +5,11 @@ FROM postgres:$PG_MAJOR_VER AS build
 ARG PG_MAJOR_VER
 
 RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get install git build-essential postgresql-server-dev-$PG_MAJOR_VER -y
+    && apt-get install build-essential postgresql-server-dev-$PG_MAJOR_VER -y
 
-WORKDIR /workspace
+ADD https://github.com/neondatabase/pg_embedding/archive/refs/heads/main.tar.gz main.tar.gz
 
-RUN git clone https://github.com/neondatabase/pg_embedding.git \
-    && cd pg_embedding \
+RUN tar --strip-components=1 -xvf main.tar.gz \
     && make \
     && make install
 
