@@ -29,7 +29,9 @@ You can modify docker-compose.yaml as your taste.
 
 ## Using the pg_embedding extension
 
-This section describes how to use the `pg_embedding` extension in Neon with a simple example demonstrating the required statements, syntax, and options.
+This section describes how to use the `pg_embedding` extension with a simple example demonstrating the required statements, syntax, and options.
+
+For information about migrating from `pgvector` to `pg_embedding`, see [Migrate from pgvector to pg_embedding](https://neon.tech/docs/extensions/pg_embedding#migrate-from-pgvector-to-pgembedding), in the _Neon documentation_.
 
 ### Usage summary
 
@@ -106,7 +108,7 @@ To optimize search behavior, you can add an HNSW index. To create the HNSW index
 Euclidean (L2) distance index:
 
 ```sql
-CREATE INDEX ON documents USING hnsw(embedding) WITH (dims=3, m=3);
+CREATE INDEX ON documents USING hnsw(embedding) WITH (dims=3, m=3, efconstruction=5, efsearch=5);
 SET enable_seqscan = off;
 SELECT id FROM documents ORDER BY embedding <-> array[3,3,3] LIMIT 1;
 ```
@@ -114,7 +116,7 @@ SELECT id FROM documents ORDER BY embedding <-> array[3,3,3] LIMIT 1;
 Cosine distance index:
 
 ```sql
-CREATE INDEX ON documents USING hnsw(embedding ann_cos_ops) WITH (dims=3, m=3);
+CREATE INDEX ON documents USING hnsw(embedding ann_cos_ops) WITH (dims=3, m=3, efconstruction=5, efsearch=5);
 SET enable_seqscan = off;
 SELECT id FROM documents ORDER BY embedding <=> array[3,3,3] LIMIT 1;
 ```
@@ -122,7 +124,7 @@ SELECT id FROM documents ORDER BY embedding <=> array[3,3,3] LIMIT 1;
 Manhattan distance index:
 
 ```sql
-CREATE INDEX ON documents USING hnsw(embedding ann_manhattan_ops) WITH (dims=3, m=3);
+CREATE INDEX ON documents USING hnsw(embedding ann_manhattan_ops) WITH (dims=3, m=3, efconstruction=5, efsearch=5);
 SET enable_seqscan = off;
 SELECT id FROM documents ORDER BY embedding <~> array[3,3,3] LIMIT 1;
 ```
@@ -133,10 +135,10 @@ The following options allow you to tune the HNSW algorithm when creating an inde
 
 - `dims`: Defines the number of dimensions in your vector data.  This is a required parameter.
 - `m`: Defines the maximum number of links or "edges" created for each node during graph construction. A higher value increases accuracy (recall) but also increases the size of the index in memory and index construction time.
-- `efConstruction`: Influences the trade-off between index quality and construction speed. A high `efConstruction` value creates a higher quality graph, enabling more accurate search results, but a higher value also means that index construction takes longer.
-- `efSearch`: Influences the trade-off between query accuracy (recall) and speed. A higher `efSearch` value increases accuracy at the cost of speed. This value should be equal to or larger than `k`, which is the number of nearest neighbors you want your search to return (defined by the `LIMIT` clause in your `SELECT` query).
+- `efconstruction`: Influences the trade-off between index quality and construction speed. A high `efconstruction` value creates a higher quality graph, enabling more accurate search results, but a higher value also means that index construction takes longer.
+- `efsearch`: Influences the trade-off between query accuracy (recall) and speed. A higher `efsearch` value increases accuracy at the cost of speed. This value should be equal to or larger than `k`, which is the number of nearest neighbors you want your search to return (defined by the `LIMIT` clause in your `SELECT` query).
 
-In summary, to prioritize search speed over accuracy, use lower values for `m` and `efSearch`. Conversely, to prioritize accuracy over search speed, use a higher value for `m` and `efSearch`. A higher `efConstruction` value enables more accurate search results at the cost of index build time, which is also affected by the size of your dataset.
+In summary, to prioritize search speed over accuracy, use lower values for `m` and `efsearch`. Conversely, to prioritize accuracy over search speed, use a higher value for `m` and `efsearch`. A higher `efconstruction` value enables more accurate search results at the cost of index build time, which is also affected by the size of your dataset.
 
 ## How HNSW search works
 

@@ -1,4 +1,4 @@
-comment = 'hnsw index'
+comment = 'Vector similarity search with the HNSW algorithm'
 default_version = '0.3.5'
 module_pathname = '$libdir/embedding'
 relocatable = true
