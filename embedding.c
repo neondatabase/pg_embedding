@@ -577,7 +577,7 @@ pq_get_centroids(HnswIndex* hnsw, bool* found)
 	entry = pqh_insert(pq_hash, RelationGetRelid(hnsw->rel), found);
 	if (!*found)
 	{
-		size_t sizeof_centroids = hnsw->meta.dim * (1ul << hnsw->meta.pqBits) * sizeof(coord_t);
+		size_t sizeof_centroids = hnsw->meta.dim * (1ul << hnsw->meta.pqBits) * sizeof(coord_t) + PQ_PAGE_SIZE;
 		entry->centroids = (coord_t*)MemoryContextAlloc(pq_memctx, sizeof_centroids);
 	}
 	return hnsw->centroids = entry->centroids;
