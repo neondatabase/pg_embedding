@@ -507,7 +507,7 @@ static void hnsw_init_first_page(HnswIndex* hnsw, ForkNumber forknum)
 	Assert(BufferGetBlockNumber(buf) == hnsw->first_page);
 	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 	page = BufferGetPage(buf);
-	PageInit(page, BufferGetPageSize(buf), sizeof(HnswPageOpaque));
+	PageInit(page, BLCKSZ, sizeof(HnswPageOpaque));
 	opq = (HnswPageOpaque*)PageGetSpecialPointer(page);
 	opq->dims = (uint16_t)hnsw->meta.dim;
 	opq->maxM = (uint16_t)hnsw->meta.maxM;
@@ -646,11 +646,11 @@ pq_create_centroids(HnswIndex* hnsw, Relation heap, Relation index)
 
 	for (blkno = 0; blkno < hnsw->first_page; blkno++)
 	{
-		buf = ReadBuffer(index, P_NEW);
+		buf = ReadBuffer(index, blkno);
 		Assert(BufferGetBlockNumber(buf) == blkno);
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 		page = BufferGetPage(buf);
-		PageInit(page, BufferGetPageSize(buf), 0);
+		PageInit(page, BLCKSZ, 0);
 		memcpy(PageGetContents(page), centroids, PQ_PAGE_SIZE);
 		centroids += PQ_PAGE_SIZE/sizeof(coord_t);
 		MarkBufferDirty(buf);
