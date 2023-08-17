@@ -122,7 +122,7 @@ void compute_centroids(
 			assert(ci < k + k_frozen);
 			ci -= k_frozen;
 #ifdef USE_OMP
-			if (ci > c0 || ci >= c1)
+			if (ci < c0 || ci >= c1)
 				continue;
 #endif
 			coord_t* c = centroids + ci * d;
