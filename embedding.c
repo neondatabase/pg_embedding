@@ -646,11 +646,12 @@ pq_create_centroids(HnswIndex* hnsw, Relation heap, Relation index)
 
 	for (blkno = 0; blkno < hnsw->first_page; blkno++)
 	{
-		buf = ReadBuffer(index, blkno);
+		buf = ReadBuffer(index, P_NEW);
 		Assert(BufferGetBlockNumber(buf) == blkno);
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 		page = BufferGetPage(buf);
 		PageInit(page, BLCKSZ, 0);
+		((PageHeader) page)->pd_upper = SizeOfPageHeaderData; /*  no hole */
 		memcpy(PageGetContents(page), centroids, PQ_PAGE_SIZE);
 		centroids += PQ_PAGE_SIZE/sizeof(coord_t);
 		MarkBufferDirty(buf);
