@@ -19,6 +19,7 @@ const size_t min_points_per_centroid = 39;
 const size_t max_points_per_centroid = 256;
 const int seed = 1234;
 const size_t max_iterations = 25;
+const double min_improvement = 0.0001;
 
 class RandomGenerator {
     std::mt19937 mt;
@@ -281,35 +282,29 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
     std::unique_ptr<idx_t[]> assign(new idx_t[nx]);
     std::unique_ptr<coord_t[]> dis(new dist_t[nx]);
 
-    // remember best iteration for redo
-    coord_t best_obj = HUGE_VALF;
-    std::vector<coord_t> centroid_candidates;
-	centroid_candidates.resize(sizeof_centroids/sizeof(coord_t));
-
 	// initialize (remaining) centroids with random points from the dataset
 	std::vector<int> perm(nx);
 
 	rand_perm(perm.data(), nx, seed + 1);
 
 	for (size_t i = 0; i < k; i++) {
-		memcpy(&centroid_candidates[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
+		memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
 	}
 
+	double prev_obj = HUGE_VALF;
 	// k-means iterations
 	for (size_t i = 0; i < max_iterations; i++) {
-		calculate_distances(meta, centroid_candidates.data(), nx, x, dis.get(), assign.get());
+		calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
 
 		// accumulate objective
-		coord_t obj = 0;
+		double obj = 0;
 		for (size_t j = 0; j < nx; j++) {
 			obj += dis[j];
 		}
 		fprintf(stderr, "Iteration %lu, objective %f\n", (unsigned long)i, obj);
-		if (obj > best_obj)
+		if ((prev_obj - obj) / prev_obj < min_improvement)
 			break;
-
-		best_obj = obj;
-		memcpy(centroids, centroid_candidates.data(), sizeof_centroids);
+		prev_obj = obj;
 
 		// update the centroids
 		std::vector<coord_t> hassign(k);
@@ -324,9 +319,9 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 			assign.get(),
 			weights,
 			hassign.data(),
-			centroid_candidates.data());
+			centroids);
 
-		split_clusters(d, k, nx, k_frozen, hassign.data(), centroid_candidates.data());
+		split_clusters(d, k, nx, k_frozen, hassign.data(), centroids);
 	}
 	return true;
 }
