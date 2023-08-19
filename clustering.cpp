@@ -16,10 +16,10 @@ extern "C" {
 
 // 39 corresponds to 10000 / 256 -> to avoid warnings on PQ tests with randu10k
 const size_t min_points_per_centroid = 39;
-const size_t max_points_per_centroid = 256;
+const size_t max_points_per_centroid = 2000;//256;
 const int seed = 1234;
-const size_t max_iterations = 16;
-const size_t max_redo = 4;
+const size_t max_iterations = 25;
+const size_t max_redo = 1;
 const double min_improvement = 0.0001;
 
 class RandomGenerator {
