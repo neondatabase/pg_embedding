@@ -18,7 +18,8 @@ extern "C" {
 const size_t min_points_per_centroid = 39;
 const size_t max_points_per_centroid = 256;
 const int seed = 1234;
-const size_t max_iterations = 25;
+const size_t max_iterations = 16;
+const size_t max_redo = 4;
 const double min_improvement = 0.0001;
 
 class RandomGenerator {
@@ -285,44 +286,58 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	// initialize (remaining) centroids with random points from the dataset
 	std::vector<int> perm(nx);
 
-	rand_perm(perm.data(), nx, seed + 1);
+    std::vector<float> best_centroids(k * d);
+	double best_obj = HUGE_VALF;
 
-	for (size_t i = 0; i < k; i++) {
-		memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
-	}
+	for (size_t redo = 0; redo < max_redo; redo++)
+	{
 
-	double prev_obj = HUGE_VALF;
-	// k-means iterations
-	for (size_t i = 0; i < max_iterations; i++) {
-		calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
+		rand_perm(perm.data(), nx, seed + 1 + redo * 15486557L);
 
-		// accumulate objective
-		double obj = 0;
-		for (size_t j = 0; j < nx; j++) {
-			obj += dis[j];
+		for (size_t i = 0; i < k; i++) {
+			memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
 		}
-		fprintf(stderr, "Iteration %lu, objective %f\n", (unsigned long)i, obj);
-		if ((prev_obj - obj) / prev_obj < min_improvement)
-			break;
-		prev_obj = obj;
 
-		// update the centroids
-		std::vector<coord_t> hassign(k);
+		double obj, prev_obj = HUGE_VALF;
+		// k-means iterations
+		for (size_t i = 0; i < max_iterations; i++) {
+			calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
 
-		size_t k_frozen = 0;
-		compute_centroids(
-			d,
-			k,
-			nx,
-			k_frozen,
-			x,
-			assign.get(),
-			weights,
-			hassign.data(),
-			centroids);
+			// accumulate objective
+			obj = 0;
+			for (size_t j = 0; j < nx; j++) {
+				obj += dis[j];
+			}
+			fprintf(stderr, "Iteration %lu/%lu, objective %f\n", (unsigned long)redo, (unsigned long)i, obj);
+			if ((prev_obj - obj) / prev_obj < min_improvement)
+				break;
+			prev_obj = obj;
 
-		split_clusters(d, k, nx, k_frozen, hassign.data(), centroids);
+			// update the centroids
+			std::vector<coord_t> hassign(k);
+
+			size_t k_frozen = 0;
+			compute_centroids(
+				d,
+				k,
+				nx,
+				k_frozen,
+				x,
+				assign.get(),
+				weights,
+				hassign.data(),
+				centroids);
+
+			split_clusters(d, k, nx, k_frozen, hassign.data(), centroids);
+		}
+		if (max_redo > 1 && obj < best_obj)
+		{
+			best_obj = obj;
+			memcpy(best_centroids.data(), centroids, sizeof_centroids);
+		}
 	}
+	if (max_redo > 1)
+		memcpy(centroids, best_centroids.data(), sizeof_centroids);
 	return true;
 }
 
