@@ -287,7 +287,7 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	std::vector<int> perm(nx);
 
     std::vector<coord_t> best_centroids(k * d);
-	double best_obj = HUGE_VALD;
+	double best_obj = HUGE_VAL;
 
 	for (size_t redo = 0; redo < max_redo; redo++)
 	{
@@ -298,7 +298,7 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 			memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
 		}
 
-		double obj, prev_obj = HUGE_VALD;
+		double obj, prev_obj = HUGE_VAL;
 		// k-means iterations
 		for (size_t i = 0; i < max_iterations; i++) {
 			calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
