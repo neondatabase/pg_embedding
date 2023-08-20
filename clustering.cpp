@@ -19,7 +19,6 @@ const size_t min_points_per_centroid = 39;
 const size_t max_points_per_centroid = 2000;//256;
 const int seed = 1234;
 const size_t max_iterations = 25;
-const size_t max_redo = 1;
 const double min_improvement = 0.0001;
 
 class RandomGenerator {
@@ -56,9 +55,7 @@ subsample_training_set(
 	size_t k,
 	size_t nx,
 	const coord_t* x,
-	const dist_t* weights,
-	coord_t** x_out,
-	dist_t** weights_out)
+	coord_t** x_out)
 {
     std::vector<int> perm(nx);
     rand_perm(perm.data(), nx, seed);
@@ -68,24 +65,13 @@ subsample_training_set(
     for (size_t i = 0; i < nx; i++) {
         memcpy(x_new + i * d, x + perm[i] * d, d * sizeof(coord_t));
     }
-    if (weights) {
-        dist_t* weights_new = new dist_t[nx];
-        for (size_t i = 0; i < nx; i++) {
-            weights_new[i] = weights[perm[i]];
-        }
-        *weights_out = weights_new;
-    } else {
-        *weights_out = nullptr;
-    }
     return nx;
 }
 
-/** compute centroids as (weighted) sum of training points
+/** compute centroids as sum of training points
  *
  * @param x            training vectors, size n * d
- * @param weights      per-training vector weight, size n (or NULL)
  * @param assign       nearest centroid for each training vector, size n
- * @param k_frozen     do not update the k_frozen first centroids
  * @param centroids    centroid vectors (output only), size k * d
  * @param hassign      histogram of assignments per centroid (size k),
  *                     should be 0 on input
@@ -95,16 +81,11 @@ void compute_centroids(
         size_t d,
         size_t k,
         size_t n,
-        size_t k_frozen,
         const coord_t* x,
         const idx_t* assign,
-        const dist_t* weights,
         coord_t* hassign,
         coord_t* centroids)
 {
-    k -= k_frozen;
-    centroids += k_frozen * d;
-
     memset(centroids, 0, sizeof(coord_t) * d * k);
 
 #ifdef USE_OMP
@@ -121,25 +102,16 @@ void compute_centroids(
 #endif
 		for (size_t i = 0; i < n; i++) {
 			idx_t ci = assign[i];
-			assert(ci < k + k_frozen);
-			ci -= k_frozen;
+			assert(ci < k);
 #ifdef USE_OMP
 			if (ci < c0 || ci >= c1)
 				continue;
 #endif
 			coord_t* c = centroids + ci * d;
 			const coord_t* xi = &x[i * d];
-			if (weights) {
-				dist_t w = weights[i];
-				hassign[ci] += w;
-				for (size_t j = 0; j < d; j++) {
-					c[j] += xi[j] * w;
-				}
-			} else {
-				hassign[ci] += 1.0;
-				for (size_t j = 0; j < d; j++) {
-					c[j] += xi[j];
-				}
+			hassign[ci] += 1.0;
+			for (size_t j = 0; j < d; j++) {
+				c[j] += xi[j];
 			}
 		}
 	}
@@ -173,13 +145,9 @@ split_clusters(
         size_t d,
         size_t k,
         size_t n,
-        size_t k_frozen,
         coord_t* hassign,
         coord_t* centroids)
 {
-    k -= k_frozen;
-    centroids += k_frozen * d;
-
     /* Take care of void clusters */
     size_t nsplit = 0;
     RandomGenerator rng(seed);
@@ -260,17 +228,12 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	size_t nx = slice_len;
 	size_t sizeof_centroids = d * k * sizeof(coord_t);
     std::unique_ptr<coord_t[]> del1;
-    std::unique_ptr<dist_t[]> del3;
-	dist_t* weights = nullptr;
 
     if (nx > k * max_points_per_centroid) {
         coord_t* x_new;
-        dist_t* weights_new;
-        nx = subsample_training_set(d, k, nx, x, weights, &x_new, &weights_new);
+        nx = subsample_training_set(d, k, nx, x, &x_new);
         del1.reset(x_new);
         x = x_new;
-        del3.reset(weights_new);
-        weights = weights_new;
     } else if (nx < k * min_points_per_centroid)
 		return false;
 
@@ -286,58 +249,41 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	// initialize (remaining) centroids with random points from the dataset
 	std::vector<int> perm(nx);
 
-    std::vector<coord_t> best_centroids(k * d);
-	double best_obj = HUGE_VAL;
+	rand_perm(perm.data(), nx, seed + 1);
 
-	for (size_t redo = 0; redo < max_redo; redo++)
-	{
-
-		rand_perm(perm.data(), nx, seed + 1 + redo * 15486557L);
-
-		for (size_t i = 0; i < k; i++) {
-			memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
-		}
-
-		double obj, prev_obj = HUGE_VAL;
-		// k-means iterations
-		for (size_t i = 0; i < max_iterations; i++) {
-			calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
-
-			// accumulate objective
-			obj = 0;
-			for (size_t j = 0; j < nx; j++) {
-				obj += dis[j];
-			}
-			fprintf(stderr, "Iteration %lu/%lu, objective %f\n", (unsigned long)redo, (unsigned long)i, obj);
-			if ((prev_obj - obj) / prev_obj < min_improvement)
-				break;
-			prev_obj = obj;
-
-			// update the centroids
-			std::vector<coord_t> hassign(k);
-
-			size_t k_frozen = 0;
-			compute_centroids(
-				d,
-				k,
-				nx,
-				k_frozen,
-				x,
-				assign.get(),
-				weights,
-				hassign.data(),
-				centroids);
-
-			split_clusters(d, k, nx, k_frozen, hassign.data(), centroids);
-		}
-		if (max_redo > 1 && obj < best_obj)
-		{
-			best_obj = obj;
-			memcpy(best_centroids.data(), centroids, sizeof_centroids);
-		}
+	for (size_t i = 0; i < k; i++) {
+		memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
 	}
-	if (max_redo > 1)
-		memcpy(centroids, best_centroids.data(), sizeof_centroids);
+
+	double prev_obj = HUGE_VAL;
+	// k-means iterations
+	for (size_t i = 0; i < max_iterations; i++) {
+		calculate_distances(meta, centroids, nx, x, dis.get(), assign.get());
+
+		// accumulate objective
+		double obj = 0;
+		for (size_t j = 0; j < nx; j++) {
+			obj += dis[j];
+		}
+		fprintf(stderr, "Iteration %lu objective=%lf\n", i, obj);
+		if ((prev_obj - obj) / prev_obj < min_improvement)
+			break;
+		prev_obj = obj;
+
+		// update the centroids
+		std::vector<coord_t> hassign(k);
+
+		compute_centroids(
+			d,
+			k,
+			nx,
+			x,
+			assign.get(),
+			hassign.data(),
+			centroids);
+
+		split_clusters(d, k, nx, hassign.data(), centroids);
+	}
 	return true;
 }
 
