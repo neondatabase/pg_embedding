@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <assert.h>
 
 #include "transform.h"
 
