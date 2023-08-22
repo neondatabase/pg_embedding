@@ -260,21 +260,6 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	size_t nx = slice_len;
 	size_t sizeof_centroids = d * k * sizeof(coord_t);
     std::unique_ptr<coord_t[]> del1;
-
-    if (nx > k * max_points_per_centroid) {
-        coord_t* x_new;
-        nx = subsample_training_set(d, k, nx, x, &x_new);
-        del1.reset(x_new);
-        x = x_new;
-    } else if (nx < k * min_points_per_centroid)
-		return false;
-
-    if (nx == k) {
-        // this is a corner case, just copy training set to clusters
-		memcpy(centroids, x, sizeof_centroids);
-        return true;
-    }
-
     std::unique_ptr<idx_t[]> assign(new idx_t[nx]);
     std::unique_ptr<coord_t[]> dis(new dist_t[nx]);
 
@@ -298,6 +283,21 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 			}
 		}
 	}
+
+	if (nx > k * max_points_per_centroid) {
+        coord_t* x_new;
+        nx = subsample_training_set(d, k, nx, x, &x_new);
+        del1.reset(x_new);
+        x = x_new;
+    } else if (nx < k * min_points_per_centroid)
+		return false;
+
+    if (nx == k) {
+        // this is a corner case, just copy training set to clusters
+		memcpy(centroids, x, sizeof_centroids);
+        return true;
+    }
+
 
 	double prev_obj = HUGE_VAL;
 	// k-means iterations
