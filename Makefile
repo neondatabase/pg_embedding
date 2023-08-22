@@ -3,7 +3,7 @@ EXTVERSION = 0.3.5
 
 MODULE_big = embedding
 DATA = $(wildcard *--*.sql)
-OBJS = embedding.o hnswalg.o distfunc.o clustering.o
+OBJS = embedding.o hnswalg.o distfunc.o clustering.o transform.o
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
@@ -13,13 +13,11 @@ REGRESS_OPTS = --inputdir=test --load-extension=embedding
 # - GCC&clang needs -Ofast or -O3: https://gcc.gnu.org/projects/tree-ssa/vectorization.html
 PG_CFLAGS += -Ofast
 ifeq ($(shell uname -s), Darwin)
-#    PG_CXXFLAGS += -DUSE_OMP -I/usr/local/include -Xclang -fopenmp  -std=c++11
-#    PG_LDFLAGS += -L/usr/local/lib -lomp -lstdc++
-    PG_CXXFLAGS += -std=c++11
-    PG_LDFLAGS += -lstdc++
+    PG_CXXFLAGS += -DUSE_OMP -I/usr/local/include -Xclang -fopenmp  -std=c++11
+    PG_LDFLAGS += -L/usr/local/lib -lomp -L/opt/homebrew/opt/openblas/lib -lblas -lstdc++
 else
     PG_CXXFLAGS += -DUSE_OMP -fopenmp -std=c++11
-    PG_LDFLAGS += -lstdc++ -fopenmp
+    PG_LDFLAGS += -lstdc++ -fopenmp -lblas
 endif
 
 

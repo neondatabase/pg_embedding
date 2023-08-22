@@ -6,6 +6,8 @@
 #include <random>
 #include <assert.h>
 
+#include "transform.h"
+
 #ifdef USE_OMP
 #include <omp.h>
 #endif
@@ -20,35 +22,14 @@ const size_t max_points_per_centroid = 2000;//256;
 const int seed = 1234;
 const size_t max_iterations = 25;
 const double min_improvement = 0.0001;
-const bool   use_hypercube = true;
 
-class RandomGenerator {
-    std::mt19937 mt;
-  public:
-	RandomGenerator(unsigned int seed) : mt(seed) {}
-
-    /// random positive integer
-    int rand_int(int max) {
-		return mt() % max;
-	}
-
-	float rand_float() {
-		return mt() / float(mt.max());
-	}
+enum TrainType {
+	TT_DEFAULT,
+	TT_HYPERCUBE,
+	TT_HYPERCUBE_PCA,
 };
 
-static void
-rand_perm(int* perm, size_t n, int64_t seed) {
-    for (size_t i = 0; i < n; i++)
-        perm[i] = i;
-
-    RandomGenerator rng(seed);
-
-    for (size_t i = 0; i + 1 < n; i++) {
-        int i2 = i + rng.rand_int(n - i);
-        std::swap(perm[i], perm[i2]);
-    }
-}
+TrainType trainType = TT_HYPERCUBE_PCA; //TT_DEFAULT;
 
 static size_t
 subsample_training_set(
@@ -245,6 +226,28 @@ static void init_hypercube(
     }
 }
 
+static void init_hypercube_pca(
+        int d,
+        int nbits,
+        int n,
+        const coord_t* x,
+        coord_t* centroids)
+{
+    PCAMatrix pca(d, nbits);
+    pca.train(n, x);
+
+    for (int i = 0; i < (1 << nbits); i++) {
+        float* cent = centroids + i * d;
+        for (int j = 0; j < d; j++) {
+            cent[j] = pca.mean[j];
+            float f = 1.0;
+            for (int k = 0; k < nbits; k++)
+                cent[j] += f * sqrt(pca.eigenvalues[k]) *
+                        (((i >> k) & 1) ? 1 : -1) * pca.PCAMat[j + k * d];
+        }
+    }
+}
+
 /*
  * Construct centriods for the specified training set
  */
@@ -275,21 +278,27 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
     std::unique_ptr<idx_t[]> assign(new idx_t[nx]);
     std::unique_ptr<coord_t[]> dis(new dist_t[nx]);
 
-	if (use_hypercube)
+	switch (trainType)
 	{
-		init_hypercube(d, meta->pqBits, nx, x, centroids);
-	}
-	else
-	{
-		// initialize centroids with random points from the dataset
-		std::vector<int> perm(nx);
+		case TT_HYPERCUBE:
+			init_hypercube(d, meta->pqBits, nx, x, centroids);
+			break;
+		case TT_HYPERCUBE_PCA:
+			init_hypercube_pca(d, meta->pqBits, nx, x, centroids);
+			break;
+		default:
+		{
+			// initialize centroids with random points from the dataset
+			std::vector<int> perm(nx);
 
-		rand_perm(perm.data(), nx, seed + 1);
+			rand_perm(perm.data(), nx, seed + 1);
 
-		for (size_t i = 0; i < k; i++) {
-			memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
+			for (size_t i = 0; i < k; i++) {
+				memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
+			}
 		}
 	}
+
 	double prev_obj = HUGE_VAL;
 	// k-means iterations
 	for (size_t i = 0; i < max_iterations; i++) {
