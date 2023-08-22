@@ -551,7 +551,7 @@ void eig(size_t d_in, double* cov, double* eigenvalues, int verbose) {
 
     // revert order of eigenvectors & values
 
-    for (int i = 0; i < d_in / 2; i++) {
+    for (size_t i = 0; i < d_in / 2; i++) {
         std::swap(eigenvalues[i], eigenvalues[d_in - 1 - i]);
         double* v1 = cov + i * d_in;
         double* v2 = cov + (d_in - 1 - i) * d_in;
