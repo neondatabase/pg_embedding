@@ -151,7 +151,7 @@ fvec_norm_L2sqr(const float* x, size_t d) {
 static void
 fvec_renorm_L2(size_t d, size_t nx, float* __restrict x) {
 #pragma omp parallel for schedule(guided)
-    for (int64_t i = 0; i < nx; i++) {
+    for (size_t i = 0; i < nx; i++) {
         float* __restrict xi = x + i * d;
 
         float nr = fvec_norm_L2sqr(xi, d);
@@ -186,7 +186,7 @@ const float* fvecs_maybe_subsample(
     std::vector<int> subset(*n);
     rand_perm(subset.data(), *n, seed);
     float* x_subset = new float[n2 * d];
-    for (int64_t i = 0; i < n2; i++)
+    for (size_t i = 0; i < n2; i++)
         memcpy(&x_subset[i * d], &x[subset[i] * size_t(d)], sizeof(x[0]) * d);
     *n = n2;
     return x_subset;
@@ -201,7 +201,7 @@ float_randn(float* x, size_t n, int64_t seed) {
     int a0 = rng0.rand_int(), b0 = rng0.rand_int();
 
 #pragma omp parallel for
-    for (int64_t j = 0; j < nblock; j++) {
+    for (size_t j = 0; j < nblock; j++) {
         RandomGenerator rng(a0 + j * b0);
 
         double a = 0, b = 0, s = 0;
@@ -296,9 +296,9 @@ void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
 
     float c_factor;
     if (have_bias) {
-        assert(b.size() == d_out);
+        assert(b.size() == (size_t)d_out);
         float* xi = xt;
-        for (int i = 0; i < n; i++)
+        for (size_t i = 0; i < n; i++)
             for (int j = 0; j < d_out; j++)
                 *xi++ = b[j];
         c_factor = 1.0;
@@ -306,7 +306,7 @@ void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
         c_factor = 0.0;
     }
 
-    assert(A.size() == d_out * d_in);
+    assert(A.size() == (size_t)d_out * d_in);
 
     float one = 1;
     FINTEGER nbiti = d_out, ni = n, di = d_in;
@@ -373,7 +373,7 @@ void LinearTransform::set_is_orthonormal() {
     }
 
     double eps = 4e-5;
-    assert(A.size() >= d_out * d_in);
+    assert(A.size() >= (size_t)d_out * d_in);
     {
         std::vector<float> ATA(d_out * d_out);
         FINTEGER dii = d_in, doi = d_out;
@@ -424,7 +424,7 @@ void LinearTransform::print_if_verbose(
     if (!verbose)
         return;
     printf("matrix %s: %d*%d [\n", name, n, d);
-    assert(mat.size() >= n * d);
+    assert(mat.size() >= (size_t)n * d);
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < d; j++) {
             printf("%10.5g ", mat[i * d + j]);
@@ -535,14 +535,14 @@ void eig(size_t d_in, double* cov, double* eigenvalues, int verbose) {
 
         if (verbose && d_in <= 10) {
             printf("info=%ld new eigvals=[", long(info));
-            for (int j = 0; j < d_in; j++)
+            for (size_t j = 0; j < d_in; j++)
                 printf("%g ", eigenvalues[j]);
             printf("]\n");
 
             double* ci = cov;
             printf("eigenvecs=\n");
-            for (int i = 0; i < d_in; i++) {
-                for (int j = 0; j < d_in; j++)
+            for (size_t i = 0; i < d_in; i++) {
+                for (size_t j = 0; j < d_in; j++)
                     printf("%10.4g ", *ci++);
                 printf("\n");
             }
@@ -555,7 +555,7 @@ void eig(size_t d_in, double* cov, double* eigenvalues, int verbose) {
         std::swap(eigenvalues[i], eigenvalues[d_in - 1 - i]);
         double* v1 = cov + i * d_in;
         double* v2 = cov + (d_in - 1 - i) * d_in;
-        for (int j = 0; j < d_in; j++)
+        for (size_t j = 0; j < d_in; j++)
             std::swap(v1[j], v2[j]);
     }
 }
@@ -570,7 +570,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
     mean.resize(d_in, 0.0);
     if (have_bias) { // we may want to skip the bias
         const float* xi = x;
-        for (int i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             for (int j = 0; j < d_in; j++)
                 mean[j] += *xi++;
         }
@@ -584,7 +584,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         printf("]\n");
     }
 
-    if (n >= d_in) {
+    if (n >= (size_t)d_in) {
         // compute covariance matrix, store it in PCA matrix
         PCAMat.resize(d_in * d_in);
         float* cov = PCAMat.data();
@@ -620,25 +620,25 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         }
 
         std::vector<double> covd(d_in * d_in);
-        for (size_t i = 0; i < d_in * d_in; i++)
+        for (size_t i = 0; i < (size_t)d_in * d_in; i++)
             covd[i] = cov[i];
 
         std::vector<double> eigenvaluesd(d_in);
 
         eig(d_in, covd.data(), eigenvaluesd.data(), verbose);
 
-        for (size_t i = 0; i < d_in * d_in; i++)
+        for (size_t i = 0; i < (size_t)d_in * d_in; i++)
             PCAMat[i] = covd[i];
         eigenvalues.resize(d_in);
 
-        for (size_t i = 0; i < d_in; i++)
+        for (int i = 0; i < d_in; i++)
             eigenvalues[i] = eigenvaluesd[i];
 
     } else {
         std::vector<float> xc(n * d_in);
 
         for (size_t i = 0; i < n; i++)
-            for (size_t j = 0; j < d_in; j++)
+            for (int j = 0; j < d_in; j++)
                 xc[i * d_in + j] = x[i * d_in + j] - mean[j];
 
         // compute Gram matrix
@@ -661,8 +661,8 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         if (verbose && d_in <= 10) {
             float* ci = gram.data();
             printf("gram=\n");
-            for (int i = 0; i < n; i++) {
-                for (int j = 0; j < n; j++)
+            for (size_t i = 0; i < n; i++) {
+                for (size_t j = 0; j < n; j++)
                     printf("%10g ", *ci++);
                 printf("\n");
             }
@@ -710,7 +710,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         if (verbose && d_in <= 10) {
             float* ci = PCAMat.data();
             printf("PCAMat=\n");
-            for (int i = 0; i < n; i++) {
+            for (size_t i = 0; i < n; i++) {
                 for (int j = 0; j < d_in; j++)
                     printf("%10g ", *ci++);
                 printf("\n");
@@ -733,7 +733,7 @@ void PCAMatrix::copy_from(const PCAMatrix& other) {
 }
 
 void PCAMatrix::prepare_Ab() {
-    assert(d_out * d_in <= PCAMat.size());
+    assert((size_t)d_out * d_in <= PCAMat.size());
     if (!random_rotation) {
         A = PCAMat;
         A.resize(d_out * d_in); // strip off useless dimensions
