@@ -20,6 +20,7 @@ const size_t max_points_per_centroid = 2000;//256;
 const int seed = 1234;
 const size_t max_iterations = 25;
 const double min_improvement = 0.0001;
+const bool   use_hypercube = true;
 
 class RandomGenerator {
     std::mt19937 mt;
@@ -216,6 +217,34 @@ calculate_distances(HnswMetadata* meta, coord_t const* centroids, size_t nx, coo
 	}
 }
 
+static void init_hypercube(
+        int d,
+        int nbits,
+        int n,
+        const coord_t* x,
+        coord_t* centroids)
+{
+    std::vector<float> mean(d);
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < d; j++)
+            mean[j] += x[i * d + j];
+
+    float maxm = 0;
+    for (int j = 0; j < d; j++) {
+        mean[j] /= n;
+        if (fabs(mean[j]) > maxm)
+            maxm = fabs(mean[j]);
+    }
+
+    for (int i = 0; i < (1 << nbits); i++) {
+        float* cent = centroids + i * d;
+        for (int j = 0; j < nbits; j++)
+            cent[j] = mean[j] + (((i >> j) & 1) ? 1 : -1) * maxm;
+        for (int j = nbits; j < d; j++)
+            cent[j] = mean[j];
+    }
+}
+
 /*
  * Construct centriods for the specified training set
  */
@@ -239,22 +268,28 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 
     if (nx == k) {
         // this is a corner case, just copy training set to clusters
-		memcpy(centroids, slice, sizeof_centroids);
+		memcpy(centroids, x, sizeof_centroids);
         return true;
     }
 
     std::unique_ptr<idx_t[]> assign(new idx_t[nx]);
     std::unique_ptr<coord_t[]> dis(new dist_t[nx]);
 
-	// initialize (remaining) centroids with random points from the dataset
-	std::vector<int> perm(nx);
-
-	rand_perm(perm.data(), nx, seed + 1);
-
-	for (size_t i = 0; i < k; i++) {
-		memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
+	if (use_hypercube)
+	{
+		init_hypercube(d, meta->pqBits, nx, x, centroids);
 	}
+	else
+	{
+		// initialize centroids with random points from the dataset
+		std::vector<int> perm(nx);
 
+		rand_perm(perm.data(), nx, seed + 1);
+
+		for (size_t i = 0; i < k; i++) {
+			memcpy(&centroids[i * d], &x[perm[i] * d], sizeof(coord_t) * d);
+		}
+	}
 	double prev_obj = HUGE_VAL;
 	// k-means iterations
 	for (size_t i = 0; i < max_iterations; i++) {
