@@ -669,7 +669,7 @@ void PCAMatrix::train(bigidx_t n, const float* x_in) {
         }
 
         std::vector<double> gramd(n * n);
-        for (size_t i = 0; i < n * n; i++)
+        for (size_t i = 0; i < (size_t)n * n; i++)
             gramd[i] = gram[i];
 
         std::vector<double> eigenvaluesd(n);
@@ -680,12 +680,12 @@ void PCAMatrix::train(bigidx_t n, const float* x_in) {
 
         PCAMat.resize(d_in * n);
 
-        for (size_t i = 0; i < n * n; i++)
+        for (size_t i = 0; i < (size_t)n * n; i++)
             gram[i] = gramd[i];
 
         eigenvalues.resize(d_in);
         // fill in only the n first ones
-        for (size_t i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
             eigenvalues[i] = eigenvaluesd[i];
 
         { // compute PCAMat = x' * v
