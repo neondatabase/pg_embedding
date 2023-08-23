@@ -46,6 +46,8 @@ struct TransformedVectors {
     }
 };
 
+typedef int64_t bigidx_t;
+
 /** Any transformation applied on a set of vectors */
 struct VectorTransform {
     int d_in;  ///! input dimension
@@ -64,25 +66,25 @@ struct VectorTransform {
      * @param n      nb of training vectors
      * @param x      training vecors, size n * d
      */
-    virtual void train(size_t n, const float* x);
+    virtual void train(bigidx_t n, const float* x);
 
     /** apply the transformation and return the result in an allocated pointer
      * @param     n number of vectors to transform
      * @param     x input vectors, size n * d_in
      * @return    output vectors, size n * d_out
      */
-    float* apply(size_t n, const float* x) const;
+    float* apply(bigidx_t n, const float* x) const;
 
     /** apply the transformation and return the result in a provided matrix
      * @param     n number of vectors to transform
      * @param     x input vectors, size n * d_in
      * @param    xt output vectors, size n * d_out
      */
-    virtual void apply_noalloc(size_t n, const float* x, float* xt) const = 0;
+    virtual void apply_noalloc(bigidx_t n, const float* x, float* xt) const = 0;
 
     /// reverse transformation. May not be implemented or may return
     /// approximate result
-    virtual void reverse_transform(size_t n, const float* xt, float* x) const;
+    virtual void reverse_transform(bigidx_t n, const float* xt, float* x) const;
 
     // check that the two transforms are identical (to merge indexes)
     virtual void check_identical(const VectorTransform& other) const = 0;
@@ -112,14 +114,14 @@ struct LinearTransform : VectorTransform {
             bool have_bias = false);
 
     /// same as apply, but result is pre-allocated
-    void apply_noalloc(size_t n, const float* x, float* xt) const override;
+    void apply_noalloc(bigidx_t n, const float* x, float* xt) const override;
 
     /// compute x = A^T * (x - b)
     /// is reverse transform if A has orthonormal lines
-    void transform_transpose(size_t n, const float* y, float* x) const;
+    void transform_transpose(bigidx_t n, const float* y, float* x) const;
 
     /// works only if is_orthonormal
-    void reverse_transform(size_t n, const float* xt, float* x) const override;
+    void reverse_transform(bigidx_t n, const float* xt, float* x) const override;
 
     /// compute A^T * A to set the is_orthonormal flag
     void set_is_orthonormal();
@@ -146,7 +148,7 @@ struct RandomRotationMatrix : LinearTransform {
     void init(int seed);
 
     // initializes with an arbitrary seed
-    void train(size_t n, const float* x) override;
+    void train(bigidx_t n, const float* x) override;
 
     RandomRotationMatrix() {}
 };
@@ -192,7 +194,7 @@ struct PCAMatrix : LinearTransform {
 
     /// train on n vectors. If n < d_in then the eigenvector matrix
     /// will be completed with 0s
-    void train(size_t n, const float* x) override;
+    void train(bigidx_t n, const float* x) override;
 
     /// copy pre-trained PCA matrix
     void copy_from(const PCAMatrix& other);

@@ -235,7 +235,7 @@ void matrix_qr(int m, int n, float* a) {
     float work_size;
 
     sgeqrf_(&mi, &ni, a, &mi, tau.data(), &work_size, &lwork, &info);
-    lwork = size_t(work_size);
+    lwork = (FINTEGER)work_size;
     std::vector<float> work(lwork);
 
     sgeqrf_(&mi, &ni, a, &mi, tau.data(), work.data(), &lwork, &info);
@@ -260,17 +260,17 @@ rand_perm(int* perm, size_t n, int64_t seed) {
  * VectorTransform
  *********************************************/
 
-float* VectorTransform::apply(size_t n, const float* x) const {
+float* VectorTransform::apply(bigidx_t n, const float* x) const {
     float* xt = new float[n * d_out];
     apply_noalloc(n, x, xt);
     return xt;
 }
 
-void VectorTransform::train(size_t, const float*) {
+void VectorTransform::train(bigidx_t, const float*) {
     // does nothing by default
 }
 
-void VectorTransform::reverse_transform(size_t, const float*, float*) const {
+void VectorTransform::reverse_transform(bigidx_t, const float*, float*) const {
 	assert(false);
 }
 
@@ -291,14 +291,14 @@ LinearTransform::LinearTransform(int d_in, int d_out, bool have_bias)
     is_trained = false; // will be trained when A and b are initialized
 }
 
-void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
+void LinearTransform::apply_noalloc(bigidx_t n, const float* x, float* xt) const {
     assert(is_trained);
 
     float c_factor;
     if (have_bias) {
         assert(b.size() == (size_t)d_out);
         float* xi = xt;
-        for (size_t i = 0; i < n; i++)
+        for (bigidx_t i = 0; i < n; i++)
             for (int j = 0; j < d_out; j++)
                 *xi++ = b[j];
         c_factor = 1.0;
@@ -325,13 +325,13 @@ void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
            &nbiti);
 }
 
-void LinearTransform::transform_transpose(size_t n, const float* y, float* x)
+void LinearTransform::transform_transpose(bigidx_t n, const float* y, float* x)
         const {
     if (have_bias) { // allocate buffer to store bias-corrected data
         float* y_new = new float[n * d_out];
         const float* yr = y;
         float* yw = y_new;
-        for (size_t i = 0; i < n; i++) {
+        for (bigidx_t i = 0; i < n; i++) {
             for (int j = 0; j < d_out; j++) {
                 *yw++ = *yr++ - b[j];
             }
@@ -407,7 +407,7 @@ void LinearTransform::set_is_orthonormal() {
     }
 }
 
-void LinearTransform::reverse_transform(size_t n, const float* xt, float* x)
+void LinearTransform::reverse_transform(bigidx_t n, const float* xt, float* x)
         const {
     if (is_orthonormal) {
         transform_transpose(n, xt, x);
@@ -470,7 +470,7 @@ void RandomRotationMatrix::init(int seed) {
     is_trained = true;
 }
 
-void RandomRotationMatrix::train(size_t /*n*/, const float* /*x*/) {
+void RandomRotationMatrix::train(bigidx_t /*n*/, const float* /*x*/) {
     // initialize with some arbitrary seed
     init(12345);
 }
@@ -560,7 +560,7 @@ void eig(size_t d_in, double* cov, double* eigenvalues, int verbose) {
     }
 }
 
-void PCAMatrix::train(size_t n, const float* x_in) {
+void PCAMatrix::train(bigidx_t n, const float* x_in) {
     const float* x = fvecs_maybe_subsample(
             d_in, (size_t*)&n, max_points_per_d * d_in, x_in, verbose);
     TransformedVectors tv(x_in, x);
@@ -570,7 +570,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
     mean.resize(d_in, 0.0);
     if (have_bias) { // we may want to skip the bias
         const float* xi = x;
-        for (size_t i = 0; i < n; i++) {
+        for (bigidx_t i = 0; i < n; i++) {
             for (int j = 0; j < d_in; j++)
                 mean[j] += *xi++;
         }
@@ -584,7 +584,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         printf("]\n");
     }
 
-    if (n >= (size_t)d_in) {
+    if (n >= d_in) {
         // compute covariance matrix, store it in PCA matrix
         PCAMat.resize(d_in * d_in);
         float* cov = PCAMat.data();
@@ -637,7 +637,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
     } else {
         std::vector<float> xc(n * d_in);
 
-        for (size_t i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
             for (int j = 0; j < d_in; j++)
                 xc[i * d_in + j] = x[i * d_in + j] - mean[j];
 
@@ -661,8 +661,8 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         if (verbose && d_in <= 10) {
             float* ci = gram.data();
             printf("gram=\n");
-            for (size_t i = 0; i < n; i++) {
-                for (size_t j = 0; j < n; j++)
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++)
                     printf("%10g ", *ci++);
                 printf("\n");
             }
@@ -710,7 +710,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         if (verbose && d_in <= 10) {
             float* ci = PCAMat.data();
             printf("PCAMat=\n");
-            for (size_t i = 0; i < n; i++) {
+            for (int i = 0; i < n; i++) {
                 for (int j = 0; j < d_in; j++)
                     printf("%10g ", *ci++);
                 printf("\n");
