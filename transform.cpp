@@ -394,8 +394,8 @@ void LinearTransform::set_is_orthonormal() {
                &doi);
 
         is_orthonormal = true;
-        for (long i = 0; i < d_out; i++) {
-            for (long j = 0; j < d_out; j++) {
+        for (size_t i = 0; i < d_out; i++) {
+            for (size_t j = 0; j < d_out; j++) {
                 float v = ATA[i + j * d_out];
                 if (i == j)
                     v -= 1;
@@ -756,12 +756,12 @@ void PCAMatrix::prepare_Ab() {
             A.resize(d_out * d_in);
 
             std::vector<float> accu(balanced_bins);
-            std::vector<int> counter(balanced_bins);
+            std::vector<unsigned> counter(balanced_bins);
 
             // greedy assignment
             for (size_t i = 0; i < d_out; i++) {
                 // find best bin
-                int best_j = 0;
+                size_t best_j = 0;
                 float min_w = 1e30;
                 for (size_t j = 0; j < balanced_bins; j++) {
                     if (counter[j] < dsub && accu[j] < min_w) {
