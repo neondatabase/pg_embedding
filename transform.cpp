@@ -171,7 +171,7 @@ const float* fvecs_maybe_subsample(
         size_t nmax,
         const float* x,
         bool verbose,
-        int64_t seed = 1234) {
+        unsigned int seed = 1234) {
     if (*n <= nmax)
         return x; // nothing to do
 
@@ -187,13 +187,13 @@ const float* fvecs_maybe_subsample(
     rand_perm(subset.data(), *n, seed);
     float* x_subset = new float[n2 * d];
     for (size_t i = 0; i < n2; i++)
-        memcpy(&x_subset[i * d], &x[subset[i] * size_t(d)], sizeof(x[0]) * d);
+        memcpy(&x_subset[i * d], &x[subset[i] * d], sizeof(x[0]) * d);
     *n = n2;
     return x_subset;
 }
 
 static void
-float_randn(float* x, size_t n, int seed) {
+float_randn(float* x, size_t n, unsigned int seed) {
     // only try to parallelize on large enough arrays
     const size_t nblock = n < 1024 ? 1 : 1024;
 
@@ -244,7 +244,7 @@ void matrix_qr(int m, int n, float* a) {
 }
 
 void
-rand_perm(int* perm, size_t n, int64_t seed) {
+rand_perm(int* perm, size_t n, unsigned int seed) {
     for (size_t i = 0; i < n; i++)
         perm[i] = i;
 
@@ -296,7 +296,7 @@ void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
 
     float c_factor;
     if (have_bias) {
-        assert(b.size() == (size_t)d_out);
+        assert(b.size() == d_out);
         float* xi = xt;
         for (size_t i = 0; i < n; i++)
             for (size_t j = 0; j < d_out; j++)
@@ -306,9 +306,10 @@ void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
         c_factor = 0.0;
     }
 
-    assert(A.size() == (size_t)d_out * d_in);
+    assert(A.size() == d_out * d_in);
 
     float one = 1;
+	assert(FINTEGER(n) == n /* check for overflow */);
     FINTEGER nbiti = d_out, ni = n, di = d_in;
     sgemm_("Transposed",
            "Not transposed",
@@ -340,6 +341,7 @@ void LinearTransform::transform_transpose(size_t n, const float* y, float* x)
     }
 
     {
+		assert(FINTEGER(n) == n /* check for overflow */);
         FINTEGER dii = d_in, doi = d_out, ni = n;
         float one = 1.0, zero = 0.0;
         sgemm_("Not",
@@ -373,7 +375,7 @@ void LinearTransform::set_is_orthonormal() {
     }
 
     double eps = 4e-5;
-    assert(A.size() >= (size_t)d_out * d_in);
+    assert(A.size() >= d_out * d_in);
     {
         std::vector<float> ATA(d_out * d_out);
         FINTEGER dii = d_in, doi = d_out;
@@ -445,7 +447,7 @@ void LinearTransform::check_identical(const VectorTransform& other_in) const {
  * RandomRotationMatrix
  *********************************************/
 
-void RandomRotationMatrix::init(int seed) {
+void RandomRotationMatrix::init(unsigned int seed) {
     if (d_out <= d_in) {
         A.resize(d_out * d_in);
         float* q = A.data();
@@ -488,7 +490,7 @@ PCAMatrix::PCAMatrix(
           eigen_power(eigen_power),
           random_rotation(random_rotation) {
     is_trained = false;
-    max_points_per_d = 1000;
+    max_points_per_d = 2000;
     balanced_bins = 0;
     epsilon = 0;
 }
@@ -511,6 +513,7 @@ void eig(size_t d_in, double* cov, double* eigenvalues, int verbose) {
                &lwork,
                &info);
         lwork = FINTEGER(workq);
+		assert(lwork >= 0);
         double* work = new double[lwork];
 
         dsyev_("Vectors as well",
@@ -562,7 +565,7 @@ void eig(size_t d_in, double* cov, double* eigenvalues, int verbose) {
 
 void PCAMatrix::train(size_t n, const float* x_in) {
     const float* x = fvecs_maybe_subsample(
-            d_in, (size_t*)&n, max_points_per_d * d_in, x_in, verbose);
+            d_in, &n, max_points_per_d * d_in, x_in, verbose);
     TransformedVectors tv(x_in, x);
 
     // compute mean
@@ -596,6 +599,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
             }
         }
         {
+			assert(FINTEGER(n) == n /* check for overflow */);
             FINTEGER di = d_in, ni = n;
             float one = 1.0;
             ssyrk_("Up",
@@ -620,14 +624,14 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         }
 
         std::vector<double> covd(d_in * d_in);
-        for (size_t i = 0; i < (size_t)d_in * d_in; i++)
+        for (size_t i = 0; i < d_in * d_in; i++)
             covd[i] = cov[i];
 
         std::vector<double> eigenvaluesd(d_in);
 
         eig(d_in, covd.data(), eigenvaluesd.data(), verbose);
 
-        for (size_t i = 0; i < (size_t)d_in * d_in; i++)
+        for (size_t i = 0; i < d_in * d_in; i++)
             PCAMat[i] = covd[i];
         eigenvalues.resize(d_in);
 
@@ -644,6 +648,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         // compute Gram matrix
         std::vector<float> gram(n * n);
         {
+			assert(FINTEGER(n) == n /* check for overflow */);
             FINTEGER di = d_in, ni = n;
             float one = 1.0, zero = 0.0;
             ssyrk_("Up",
@@ -669,7 +674,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         }
 
         std::vector<double> gramd(n * n);
-        for (size_t i = 0; i < (size_t)n * n; i++)
+        for (size_t i = 0; i < n * n; i++)
             gramd[i] = gram[i];
 
         std::vector<double> eigenvaluesd(n);
@@ -680,7 +685,7 @@ void PCAMatrix::train(size_t n, const float* x_in) {
 
         PCAMat.resize(d_in * n);
 
-        for (size_t i = 0; i < (size_t)n * n; i++)
+        for (size_t i = 0; i < n * n; i++)
             gram[i] = gramd[i];
 
         eigenvalues.resize(d_in);
@@ -689,7 +694,8 @@ void PCAMatrix::train(size_t n, const float* x_in) {
             eigenvalues[i] = eigenvaluesd[i];
 
         { // compute PCAMat = x' * v
-            FINTEGER di = d_in, ni = n;
+			assert(FINTEGER(n) == n /* check for overflow */);
+			FINTEGER di = d_in, ni = n;
             float one = 1.0;
 
             sgemm_("Non",
@@ -733,7 +739,7 @@ void PCAMatrix::copy_from(const PCAMatrix& other) {
 }
 
 void PCAMatrix::prepare_Ab() {
-    assert((size_t)d_out * d_in <= PCAMat.size());
+    assert(d_out * d_in <= PCAMat.size());
     if (!random_rotation) {
         A = PCAMat;
         A.resize(d_out * d_in); // strip off useless dimensions
@@ -762,14 +768,14 @@ void PCAMatrix::prepare_Ab() {
             for (size_t i = 0; i < d_out; i++) {
                 // find best bin
                 size_t best_j = 0;
-                float min_w = 1e30;
+                float min_w = HUGE_VALF;
                 for (size_t j = 0; j < balanced_bins; j++) {
                     if (counter[j] < dsub && accu[j] < min_w) {
                         min_w = accu[j];
                         best_j = j;
                     }
                 }
-                int row_dst = best_j * dsub + counter[best_j];
+                size_t row_dst = best_j * dsub + counter[best_j];
                 accu[best_j] += eigenvalues[i];
                 counter[best_j]++;
                 memcpy(&A[row_dst * d_in], &Ain[i * d_in], d_in * sizeof(A[0]));

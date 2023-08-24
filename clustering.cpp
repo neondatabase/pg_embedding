@@ -199,49 +199,51 @@ calculate_distances(HnswMetadata* meta, coord_t const* centroids, size_t nx, coo
 }
 
 static void init_hypercube(
-        int d,
-        int nbits,
-        int n,
+        size_t d,
+        size_t nbits,
+        size_t n,
         const coord_t* x,
         coord_t* centroids)
 {
     std::vector<float> mean(d);
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < d; j++)
+	size_t n_centroids = 1 << nbits;
+    for (size_t i = 0; i < n; i++)
+        for (size_t j = 0; j < d; j++)
             mean[j] += x[i * d + j];
 
     float maxm = 0;
-    for (int j = 0; j < d; j++) {
+    for (size_t j = 0; j < d; j++) {
         mean[j] /= n;
         if (fabs(mean[j]) > maxm)
             maxm = fabs(mean[j]);
     }
 
-    for (int i = 0; i < (1 << nbits); i++) {
+    for (size_t i = 0; i < n_centroids; i++) {
         float* cent = centroids + i * d;
-        for (int j = 0; j < nbits; j++)
+        for (size_t j = 0; j < nbits; j++)
             cent[j] = mean[j] + (((i >> j) & 1) ? 1 : -1) * maxm;
-        for (int j = nbits; j < d; j++)
+        for (size_t j = nbits; j < d; j++)
             cent[j] = mean[j];
     }
 }
 
 static void init_hypercube_pca(
-        int d,
-        int nbits,
-        int n,
+        size_t d,
+        size_t nbits,
+        size_t n,
         const coord_t* x,
         coord_t* centroids)
 {
+	size_t n_centroids = 1 << nbits;
     PCAMatrix pca(d, nbits);
     pca.train(n, x);
 
-    for (int i = 0; i < (1 << nbits); i++) {
+    for (size_t i = 0; i < n_centroids; i++) {
         float* cent = centroids + i * d;
-        for (int j = 0; j < d; j++) {
+        for (size_t j = 0; j < d; j++) {
             cent[j] = pca.mean[j];
             float f = 1.0;
-            for (int k = 0; k < nbits; k++)
+            for (size_t k = 0; k < nbits; k++)
                 cent[j] += f * sqrt(pca.eigenvalues[k]) *
                         (((i >> k) & 1) ? 1 : -1) * pca.PCAMat[j + k * d];
         }
@@ -287,6 +289,7 @@ pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* ce
 	if (nx > k * max_points_per_centroid) {
         coord_t* x_new;
         nx = subsample_training_set(d, k, nx, x, &x_new);
+		fprintf(stderr, "Subsample %lu points\n", nx);
         del1.reset(x_new);
         x = x_new;
     } else if (nx < k * min_points_per_centroid)

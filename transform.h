@@ -27,7 +27,7 @@ class RandomGenerator {
 	}
 };
 
-extern void rand_perm(int* perm, size_t n, int64_t seed);
+extern void rand_perm(int* perm, size_t n, unsigned int seed);
 
 /** RAII object for a set of possibly transformed vectors (deallocated only if
  * they are indeed transformed)
@@ -143,7 +143,7 @@ struct RandomRotationMatrix : LinearTransform {
             : LinearTransform(d_in, d_out, false) {}
 
     /// must be called before the transform is used
-    void init(int seed);
+    void init(unsigned int seed);
 
     // initializes with an arbitrary seed
     void train(size_t n, const float* x) override;
