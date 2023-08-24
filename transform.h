@@ -46,14 +46,12 @@ struct TransformedVectors {
     }
 };
 
-typedef int64_t bigidx_t;
-
 /** Any transformation applied on a set of vectors */
 struct VectorTransform {
-    int d_in;  ///! input dimension
-    int d_out; ///! output dimension
+    size_t d_in;  ///! input dimension
+    size_t d_out; ///! output dimension
 
-    explicit VectorTransform(int d_in = 0, int d_out = 0)
+    explicit VectorTransform(size_t d_in = 0, size_t d_out = 0)
             : d_in(d_in), d_out(d_out), is_trained(true) {}
 
     /// set if the VectorTransform does not require training, or if
@@ -66,25 +64,25 @@ struct VectorTransform {
      * @param n      nb of training vectors
      * @param x      training vecors, size n * d
      */
-    virtual void train(bigidx_t n, const float* x);
+    virtual void train(size_t n, const float* x);
 
     /** apply the transformation and return the result in an allocated pointer
      * @param     n number of vectors to transform
      * @param     x input vectors, size n * d_in
      * @return    output vectors, size n * d_out
      */
-    float* apply(bigidx_t n, const float* x) const;
+    float* apply(size_t n, const float* x) const;
 
     /** apply the transformation and return the result in a provided matrix
      * @param     n number of vectors to transform
      * @param     x input vectors, size n * d_in
      * @param    xt output vectors, size n * d_out
      */
-    virtual void apply_noalloc(bigidx_t n, const float* x, float* xt) const = 0;
+    virtual void apply_noalloc(size_t n, const float* x, float* xt) const = 0;
 
     /// reverse transformation. May not be implemented or may return
     /// approximate result
-    virtual void reverse_transform(bigidx_t n, const float* xt, float* x) const;
+    virtual void reverse_transform(size_t n, const float* xt, float* x) const;
 
     // check that the two transforms are identical (to merge indexes)
     virtual void check_identical(const VectorTransform& other) const = 0;
@@ -109,19 +107,19 @@ struct LinearTransform : VectorTransform {
 
     /// both d_in > d_out and d_out < d_in are supported
     explicit LinearTransform(
-            int d_in = 0,
-            int d_out = 0,
+            size_t d_in = 0,
+            size_t d_out = 0,
             bool have_bias = false);
 
     /// same as apply, but result is pre-allocated
-    void apply_noalloc(bigidx_t n, const float* x, float* xt) const override;
+    void apply_noalloc(size_t n, const float* x, float* xt) const override;
 
     /// compute x = A^T * (x - b)
     /// is reverse transform if A has orthonormal lines
-    void transform_transpose(bigidx_t n, const float* y, float* x) const;
+    void transform_transpose(size_t n, const float* y, float* x) const;
 
     /// works only if is_orthonormal
-    void reverse_transform(bigidx_t n, const float* xt, float* x) const override;
+    void reverse_transform(size_t n, const float* xt, float* x) const override;
 
     /// compute A^T * A to set the is_orthonormal flag
     void set_is_orthonormal();
@@ -130,8 +128,8 @@ struct LinearTransform : VectorTransform {
     void print_if_verbose(
             const char* name,
             const std::vector<double>& mat,
-            int n,
-            int d) const;
+            size_t n,
+            size_t d) const;
 
     void check_identical(const VectorTransform& other) const override;
 
@@ -141,14 +139,14 @@ struct LinearTransform : VectorTransform {
 /// Randomly rotate a set of vectors
 struct RandomRotationMatrix : LinearTransform {
     /// both d_in > d_out and d_out < d_in are supported
-    RandomRotationMatrix(int d_in, int d_out)
+    RandomRotationMatrix(size_t d_in, size_t d_out)
             : LinearTransform(d_in, d_out, false) {}
 
     /// must be called before the transform is used
     void init(int seed);
 
     // initializes with an arbitrary seed
-    void train(bigidx_t n, const float* x) override;
+    void train(size_t n, const float* x) override;
 
     RandomRotationMatrix() {}
 };
@@ -174,7 +172,7 @@ struct PCAMatrix : LinearTransform {
     size_t max_points_per_d;
 
     /// try to distribute output eigenvectors in this many bins
-    int balanced_bins;
+    size_t balanced_bins;
 
     /// Mean, size d_in
     std::vector<float> mean;
@@ -187,14 +185,14 @@ struct PCAMatrix : LinearTransform {
 
     // the final matrix is computed after random rotation and/or whitening
     explicit PCAMatrix(
-            int d_in = 0,
-            int d_out = 0,
+            size_t d_in = 0,
+            size_t d_out = 0,
             float eigen_power = 0,
             bool random_rotation = false);
 
     /// train on n vectors. If n < d_in then the eigenvector matrix
     /// will be completed with 0s
-    void train(bigidx_t n, const float* x) override;
+    void train(size_t n, const float* x) override;
 
     /// copy pre-trained PCA matrix
     void copy_from(const PCAMatrix& other);
