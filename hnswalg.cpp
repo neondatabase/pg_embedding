@@ -260,7 +260,7 @@ bool hnsw_search(HnswMetadata* meta, const coord_t *point, size_t* n_results, la
 		auto result = searchKnn(meta, point, meta->efSearch);
 		size_t nResults = result.size();
 		*results = (label_t*)malloc(nResults*sizeof(label_t));
-		if (*result == NULL)
+		if (*results == NULL)
 			return false;
 		for (size_t i = nResults; i-- != 0;)
 		{
