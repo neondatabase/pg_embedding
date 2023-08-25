@@ -19,6 +19,8 @@ typedef float    dist_t;
 typedef uint32_t idx_t;
 typedef uint64_t label_t;
 
+#define MAX_DIM 2048
+
 typedef enum {
 	DIST_L2,
 	DIST_COSINE,
@@ -37,6 +39,9 @@ typedef struct
 	size_t		maxM;
 	size_t		efConstruction;
 	size_t		efSearch;
+	size_t      pqBits;    /* product quantizer: number of bits per quantization index */
+	size_t      pqSubqs;   /* product quantizer: number of subquantizers */
+	size_t      pqSubdim;  /* dim / pqSubqs */
 	idx_t		enterpoint_node;
 	dist_func_t dist_func;
 } HnswMetadata;
@@ -54,3 +59,5 @@ extern void hnsw_prefetch(HnswMetadata* meta, idx_t idx);
 
 extern dist_t hnsw_dist_func(dist_func_t dist, coord_t const* ax, coord_t const* bx, size_t dim);
 extern void   hnsw_init_dist_func(void);
+
+extern bool   pq_train(HnswMetadata* meta, size_t slice_len, coord_t const* slice, coord_t* centroids);

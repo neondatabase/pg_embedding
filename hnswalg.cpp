@@ -44,7 +44,8 @@ searchBaseLayer(HnswMetadata* meta, const coord_t *point, size_t ef)
 {
 	std::vector<uint32_t> visited;
 	const size_t init_visited_size = 64*1024;
-	coord_t* p_coords;
+	coord_t buf[MAX_DIM];
+	coord_t* p_coords = buf;
 	idx_t* p_indexes;
 
 	visited.resize(init_visited_size);
@@ -127,6 +128,9 @@ void getNeighborsByHeuristic(HnswMetadata* meta, std::priority_queue<std::pair<d
         topResults.pop();
     }
 
+	coord_t buf[2][MAX_DIM];
+	coord_t *p_coords = buf[0], *p_coords2 = buf[1];
+
     while (resultSet.size()) {
         if (returnlist.size() >= NN)
             break;
@@ -135,7 +139,6 @@ void getNeighborsByHeuristic(HnswMetadata* meta, std::priority_queue<std::pair<d
         resultSet.pop();
         bool good = true;
         for (std::pair<dist_t, idx_t> curen2 : returnlist) {
-			coord_t *p_coords, *p_coords2;
 			hnsw_begin_read(meta, curen2.second, NULL, &p_coords2, NULL);
 			hnsw_begin_read(meta, curen.second, NULL, &p_coords, NULL);
             dist_t curdist = calc_dist_func(meta, p_coords2, p_coords);
@@ -158,7 +161,8 @@ void mutuallyConnectNewElement(HnswMetadata* meta, const coord_t *point, idx_t c
     getNeighborsByHeuristic(meta, topResults, meta->M);
 
 	idx_t   *p_indexes;
-	coord_t *p_coord, *p_coord2;
+	coord_t buf[2][MAX_DIM];
+	coord_t *p_coord = buf[0], *p_coord2 = buf[1];
     std::vector<idx_t> res;
     res.reserve(meta->M);
     while (topResults.size() > 0) {
