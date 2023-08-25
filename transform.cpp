@@ -309,7 +309,6 @@ void LinearTransform::apply_noalloc(size_t n, const float* x, float* xt) const {
     assert(A.size() == d_out * d_in);
 
     float one = 1;
-	assert(FINTEGER(n) == n /* check for overflow */);
     FINTEGER nbiti = d_out, ni = n, di = d_in;
     sgemm_("Transposed",
            "Not transposed",
@@ -341,7 +340,6 @@ void LinearTransform::transform_transpose(size_t n, const float* y, float* x)
     }
 
     {
-		assert(FINTEGER(n) == n /* check for overflow */);
         FINTEGER dii = d_in, doi = d_out, ni = n;
         float one = 1.0, zero = 0.0;
         sgemm_("Not",
@@ -599,7 +597,6 @@ void PCAMatrix::train(size_t n, const float* x_in) {
             }
         }
         {
-			assert(FINTEGER(n) == n /* check for overflow */);
             FINTEGER di = d_in, ni = n;
             float one = 1.0;
             ssyrk_("Up",
@@ -648,7 +645,6 @@ void PCAMatrix::train(size_t n, const float* x_in) {
         // compute Gram matrix
         std::vector<float> gram(n * n);
         {
-			assert(FINTEGER(n) == n /* check for overflow */);
             FINTEGER di = d_in, ni = n;
             float one = 1.0, zero = 0.0;
             ssyrk_("Up",
@@ -694,7 +690,6 @@ void PCAMatrix::train(size_t n, const float* x_in) {
             eigenvalues[i] = eigenvaluesd[i];
 
         { // compute PCAMat = x' * v
-			assert(FINTEGER(n) == n /* check for overflow */);
 			FINTEGER di = d_in, ni = n;
             float one = 1.0;
 

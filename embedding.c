@@ -147,6 +147,8 @@ static MemoryContext pq_memctx;
 #define MAX_DIM              2048
 
 static bool hnsw_add_point(HnswIndex* hnsw, coord_t const* coord, label_t label);
+static void pq_pack_coordinates(HnswIndex* hnsw, uint8* code, coord_t const* coords);
+static void pq_unpack_coordinates(HnswIndex* hnsw, uint8 const* code, coord_t* coords);
 
 PGDLLEXPORT void _PG_init(void);
 
@@ -364,6 +366,22 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 				 n_items, (int)so->hnsw->meta.dim);
 		}
 
+		{
+			uint8 code[PQ_PAGE_SIZE];
+			coord_t pq_coords[PQ_PAGE_SIZE/4];
+			coord_t* orig_coords = (coord_t*)ARR_DATA_PTR(array);
+			dist_t dist;
+			pq_pack_coordinates(so->hnsw, code, orig_coords);
+			pq_unpack_coordinates(so->hnsw, code, pq_coords);
+			dist = hnsw_dist_func(so->hnsw->meta.dist_func, orig_coords, pq_coords, so->hnsw->meta.dim);
+			fprintf(stderr, "Distance with orig vector: %f [", dist);
+			for (size_t i = 0; i < so->hnsw->meta.pqSubqs; i++)
+			{
+				dist = hnsw_dist_func(so->hnsw->meta.dist_func, orig_coords + i * so->hnsw->meta.pqSubdim, pq_coords + i * so->hnsw->meta.pqSubdim, so->hnsw->meta.pqSubdim);
+				fprintf(stderr, "%f,", dist);
+			}
+			fprintf(stderr, "]\n");
+		}
 		if (!hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(array), &n_results, &results))
 			elog(ERROR, "HNSW index search failed");
 		pfree(array);
