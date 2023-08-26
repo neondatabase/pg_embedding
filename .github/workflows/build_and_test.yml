@@ -28,6 +28,10 @@ jobs:
     steps:
       - uses: Homebrew/actions/setup-homebrew@master
 
+      - name: Workaround GitHub Actions Python issues
+        if: startsWith(matrix.os, 'macos-')
+        run: brew unlink python && brew link --overwrite python
+
       # TODO: Remove after postgresql@16 is available in homebrew/core
       - if: matrix.postgresql == 16
         run: brew tap bayandin/tap
@@ -66,6 +70,10 @@ jobs:
 
     steps:
       - uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Workaround GitHub Actions Python issues
+        if: startsWith(matrix.os, 'macos-')
+        run: brew unlink python && brew link --overwrite python
 
       - run: brew tap bayandin/tap
 
