@@ -342,7 +342,7 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 		}
 		so->no_more_results = n_results < so->hnsw->meta.efSearch;
 
-		/* ANN search with larger K (efSearch) xcan find netter results than with smaller K.
+		/* ANN search with larger K (efSearch) can find better results than with smaller K.
 		 * We have two choices:
 		 * 1. Ignore them to preserve monotony of results.
 		 * 2. Onclude them to include more relevant results in selection and increase recall
