@@ -295,7 +295,7 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 		int         n_items;
 		size_t      n_results;
 		label_t*    results;
-		bool        res;
+		bool        search_succeeded;
 
 		/* Safety check */
 		if (scan->orderByData == NULL)
@@ -314,10 +314,10 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 				 n_items, (int)so->hnsw->meta.dim);
 		}
 
-		res = hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(array), &n_results, &results);
+		search_succeeded = hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(array), &n_results, &results);
 		pfree(array);
 
-		if (!res)
+		if (!search_succeeded)
 			elog(ERROR, "HNSW index search failed");
 
 		so->results = (ItemPointer)palloc(n_results*sizeof(ItemPointerData));
