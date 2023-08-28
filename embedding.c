@@ -345,7 +345,7 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 		/* ANN search with larger K (efSearch) can find better results than with smaller K.
 		 * We have two choices:
 		 * 1. Ignore them to preserve monotony of results.
-		 * 2. Onclude them to include more relevant results in selection and increase recall
+		 * 2. Include them to include more relevant results in selection and increase recall
 		 * To ignore them we need hnsw_search to also return distance.
 		 * Without it the only choice is 2)
 		 */
