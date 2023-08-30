@@ -101,6 +101,8 @@ typedef struct {
 	HnswIndex* hnsw;
 	size_t curr;
 	size_t n_results;
+	bool   no_more_results;
+	ArrayType*	key;
 	ItemPointer results;
 } HnswScanOpaqueData;
 
@@ -253,6 +255,8 @@ hnsw_beginscan(Relation index, int nkeys, int norderbys)
 	so->curr = 0;
 	so->n_results = 0;
 	so->results = NULL;
+	so->no_more_results = true;
+	so->key = NULL;
 	scan->opaque = so;
 	return scan;
 }
@@ -280,7 +284,9 @@ hnsw_rescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int n
 static bool
 hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 {
-	HnswScanOpaque so = (HnswScanOpaque) scan->opaque;
+	HnswScanOpaque 	so = (HnswScanOpaque) scan->opaque;
+	size_t			n_results;
+	label_t*		results;
 
 	/*
 	 * Index can be used to scan backward, but Postgres doesn't support
@@ -291,11 +297,7 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 	if (so->curr == 0)
 	{
 		Datum		value;
-		ArrayType*	array;
 		int         n_items;
-		size_t      n_results;
-		label_t*    results;
-		bool        search_succeeded;
 
 		/* Safety check */
 		if (scan->orderByData == NULL)
@@ -306,22 +308,18 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 			return false;
 
 		value = scan->orderByData->sk_argument;
-		array = DatumGetArrayTypePCopy(value);
-		n_items = ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array));
+		so->key = DatumGetArrayTypePCopy(value);
+		n_items = ArrayGetNItems(ARR_NDIM(so->key), ARR_DIMS(so->key));
 		if (n_items != so->hnsw->meta.dim)
-		{
 			elog(ERROR, "Wrong number of dimensions: %d instead of %d expected",
 				 n_items, (int)so->hnsw->meta.dim);
-		}
 
-		search_succeeded = hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(array), &n_results, &results);
-		pfree(array);
-
-		if (!search_succeeded)
+		if (!hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(so->key), &n_results, &results))
 			elog(ERROR, "HNSW index search failed");
 
 		so->results = (ItemPointer)palloc(n_results*sizeof(ItemPointerData));
 		so->n_results = n_results;
+		so->no_more_results = n_results < so->hnsw->meta.efSearch;
 		for (size_t i = 0; i < n_results; i++)
 		{
 			memcpy(&so->results[i], &results[i], sizeof(so->results[i]));
@@ -330,14 +328,45 @@ hnsw_gettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	if (so->curr >= so->n_results)
 	{
-		return false;
+		if (so->no_more_results)
+			return false;
+
+		so->hnsw->meta.efSearch *= 2;
+		if (!hnsw_search(&so->hnsw->meta, (coord_t*)ARR_DATA_PTR(so->key), &n_results, &results))
+			elog(ERROR, "HNSW index search failed");
+
+		if (n_results <= so->n_results)
+		{
+			/* No new results found */
+			return false;
+		}
+		so->no_more_results = n_results < so->hnsw->meta.efSearch;
+
+		/* ANN search with larger K (efSearch) can find better results than with smaller K.
+		 * We have two choices:
+		 * 1. Ignore them to preserve monotony of results.
+		 * 2. Include them to include more relevant results in selection and increase recall
+		 * To ignore them we need hnsw_search to also return distance.
+		 * Without it the only choice is 2)
+		 */
+		so->results = (ItemPointer)repalloc(so->results, (n_results + so->n_results)*sizeof(ItemPointerData));
+
+		/* Sort for binary search */
+		pg_qsort(so->results, so->n_results, sizeof(ItemPointerData), (int (*)(const void *, const void *))ItemPointerCompare);
+
+		/* Exclude already returned records */
+		for (size_t i = 0; i < n_results; i++)
+		{
+			if (!bsearch(&results[i], so->results, so->n_results, sizeof(ItemPointerData), (int (*)(const void *, const void *))ItemPointerCompare))
+			{
+				memcpy(&so->results[so->n_results++], &results[i], sizeof(ItemPointerData));
+			}
+		}
+		Assert(so->curr < so->n_results);
 	}
-	else
-	{
-		scan->xs_heaptid = so->results[so->curr++];
-		scan->xs_recheckorderby = false;
-		return true;
-	}
+	scan->xs_heaptid = so->results[so->curr++];
+	scan->xs_recheckorderby = false;
+	return true;
 }
 
 /*
@@ -347,6 +376,8 @@ static void
 hnsw_endscan(IndexScanDesc scan)
 {
 	HnswScanOpaque so = (HnswScanOpaque) scan->opaque;
+	if (so->key)
+		pfree(so->key);
 	if (so->results)
 		pfree(so->results);
 	if (so->hnsw)
