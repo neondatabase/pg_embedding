@@ -529,10 +529,16 @@ hnsw_build(Relation heap, Relation index, IndexInfo *indexInfo)
 						  0, RelationGetNumberOfBlocks(index),
 						  true);
 		#ifdef NEON_SMGR
-		SetLastWrittenLSNForBlockRange(XactLastRecEnd,
-									   index->rd_smgr->smgr_rnode.node,
-									   MAIN_FORKNUM, 0, RelationGetNumberOfBlocks(index));
-		SetLastWrittenLSNForRelation(XactLastRecEnd, index->rd_smgr->smgr_rnode.node, MAIN_FORKNUM);
+		{
+			#if PG_VERSION_NUM >= 160000
+			RelFileLocator locator = index->rd_locator;
+			#else
+			RelFileNode locator = index->rd_node;
+			#endif
+			SetLastWrittenLSNForBlockRange(XactLastRecEnd, locator,
+										   MAIN_FORKNUM, 0, RelationGetNumberOfBlocks(index));
+			SetLastWrittenLSNForRelation(XactLastRecEnd, locator, MAIN_FORKNUM);
+		}
 		#endif
 	}
 	#ifdef NEON_SMGR
