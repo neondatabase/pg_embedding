@@ -1,5 +1,5 @@
 EXTENSION = embedding
-EXTVERSION = 0.3.5
+EXTVERSION = 0.3.6
 
 MODULE_big = embedding
 DATA = $(wildcard *--*.sql)
