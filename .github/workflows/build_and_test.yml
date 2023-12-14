@@ -28,6 +28,10 @@ jobs:
     steps:
       - uses: Homebrew/actions/setup-homebrew@master
 
+      - name: Workaround GitHub Actions Python issues
+        if: startsWith(matrix.os, 'macos-')
+        run: brew unlink python && brew link --overwrite python
+
       # TODO: Remove after postgresql@16 is available in homebrew/core
       - if: matrix.postgresql == 16
         run: brew tap bayandin/tap
@@ -36,6 +40,8 @@ jobs:
         run: |
           brew install ${FORMULA}
           brew services start ${FORMULA}
+
+          $(brew --prefix ${FORMULA})/bin/postgres --version
 
           echo "PG_CONFIG=$(brew --prefix ${FORMULA})/bin/pg_config" >> $GITHUB_ENV
         env:
@@ -46,6 +52,58 @@ jobs:
       - run: make
       - run: make install
       - run: make installcheck
+
+      - if: failure()
+        run: cat regression.diffs || true
+
+  build-and-test-on-neon:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04 ]
+        postgresql: [ 14, 15 ]
+        include:
+          - os: macos-13
+            postgresql: 15
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Workaround GitHub Actions Python issues
+        if: startsWith(matrix.os, 'macos-')
+        run: brew unlink python && brew link --overwrite python
+
+      - run: brew tap bayandin/tap
+
+      - name: brew install neon
+        run: |
+          brew install ${FORMULA}
+
+          echo "$(brew --prefix openssl@3)/bin" >> $GITHUB_PATH
+          echo "PG_CONFIG=$(brew ruby -e 'puts "neon-postgres".to_sym.f.pg_bin_for("v${{ matrix.postgresql }}")')/pg_config" >> $GITHUB_ENV
+
+          $(brew --prefix ${FORMULA})/bin/neon-local --version
+        env:
+          FORMULA: bayandin/tap/neon-local
+
+      - name: Start neon
+        run: |
+          neon-local start
+          neon-local tenant create --pg-version ${{ matrix.postgresql }} --set-default
+          neon-local endpoint start main --pg-version ${{ matrix.postgresql }} --pg-port 60000
+
+      - uses: actions/checkout@v3
+
+      - run: make
+      - run: make install
+      - name: make installcheck
+        run: |
+          export PGPORT=60000
+          export PGUSER=cloud_admin
+
+          make installcheck
 
       - if: failure()
         run: cat regression.diffs || true

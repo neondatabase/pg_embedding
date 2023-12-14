@@ -1,0 +1,16 @@
+-- https://github.com/neondatabase/pg_embedding/issues/3
+SET enable_seqscan = off;
+CREATE TABLE t(id SERIAL PRIMARY KEY, val REAL[]);
+CREATE INDEX ON t using hnsw(val) WITH (dims=3, m=3);
+INSERT INTO t (val) VALUES ('{0,1,2}'), ('{1,2,3}'), ('{1,1,1}');
+TRUNCATE t;
+INSERT INTO t (val) VALUES ('{4,5,6}'), ('{1,2,3}'), ('{7,8,9}');
+SELECT ctid, id from t order by val <-> ARRAY[3,3,3];
+ ctid  | id 
+-------+----
+ (0,2) |  5
+ (0,1) |  4
+ (0,3) |  6
+(3 rows)
+
+DROP TABLE t;
