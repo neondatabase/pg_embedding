@@ -16,6 +16,28 @@ The `pg_embedding` extension enables the using the Hierarchical Navigable Small 
 This extension is based on [ivf-hnsw](https://github.com/dbaranchuk/ivf-hnsw) implementation of HNSW
 the code for the current state-of-the-art billion-scale nearest neighbor search system<sup>[[1]](#references)</sup>.
 
+## Run pg_embedding locally with Docker Compose
+
+Firstly, [install docker with docker-compose-plugin](https://docs.docker.com/engine/install/), then clone this repo.
+
+```bash
+git clone https://github.com/neondatabase/pg_embedding.git
+```
+
+Build the docker image.
+
+```bash
+docker compose build
+```
+
+Run docker container with docker compose.
+
+```bash
+docker compose up -d
+```
+
+You can modify docker-compose.yaml as your taste.
+
 ## Using the pg_embedding extension
 
 This section describes how to use the `pg_embedding` extension with a simple example demonstrating the required statements, syntax, and options.
